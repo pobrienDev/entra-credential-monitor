@@ -52,6 +52,44 @@ class Credential:
         """Stable identity for a credential across runs."""
         return f"{self.object_id}:{self.key_id}"
 
+    def to_dict(self) -> dict:
+        """JSON-safe representation. Never includes a secret value or hint."""
+        return {
+            "status": self.status,
+            "days": self.days,
+            "object_type": self.object_type,
+            "object_id": self.object_id,
+            "app_id": self.app_id,
+            "display_name": self.display_name,
+            "cred_type": self.cred_type,
+            "key_id": self.key_id,
+            "name": self.name,
+            "start": self.start.isoformat() if self.start else None,
+            "end": self.end.isoformat(),
+            "thumbprint": self.thumbprint,
+            "long_lived": self.long_lived,
+            "excluded": self.excluded,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Credential":
+        return cls(
+            object_type=d["object_type"],
+            object_id=d["object_id"],
+            app_id=d.get("app_id", ""),
+            display_name=d["display_name"],
+            cred_type=d["cred_type"],
+            key_id=d["key_id"],
+            name=d["name"],
+            start=parse_graph_datetime(d.get("start")),
+            end=parse_graph_datetime(d["end"]),
+            thumbprint=d.get("thumbprint"),
+            days=d.get("days"),
+            status=d.get("status"),
+            long_lived=bool(d.get("long_lived", False)),
+            excluded=bool(d.get("excluded", False)),
+        )
+
 
 @dataclass
 class CollectResult:

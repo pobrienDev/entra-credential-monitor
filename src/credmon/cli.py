@@ -9,11 +9,10 @@ from datetime import datetime, timezone
 
 from credmon import __version__
 from credmon.classify import classify, should_fail, summarize
-from credmon.collect import Credential, collect
+from credmon.collect import Credential, collect, parse_graph_datetime
 from credmon.config import Config
 from credmon.graph import get_session
-
-TYPE_LABELS = {"secret": "Secret", "certificate": "Certificate", "saml_certificate": "SAML cert"}
+from credmon.report import display_status, type_label, write_reports
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -32,19 +31,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="print a table to stdout, or write summary.md/credentials.csv/credentials.json",
     )
 
+    scan.add_argument("--now", help=argparse.SUPPRESS)  # ISO 8601 clock override for reproducible runs
+
     notify = sub.add_parser("notify", help="open or close GitHub issues from a report")
     notify.add_argument("--report", default="report/credentials.json", help="path to credentials.json")
     return parser
-
-
-def display_status(c: Credential) -> str:
-    """Status label for humans: hygiene shows only when nothing more urgent applies."""
-    if c.status == "ok" and c.long_lived:
-        return "HYGIENE"
-    label = (c.status or "ok").upper()
-    if c.excluded:
-        label += "*"
-    return label
 
 
 def format_table(records: list[Credential]) -> str:
@@ -53,7 +44,7 @@ def format_table(records: list[Credential]) -> str:
             display_status(c),
             "App" if c.object_type == "application" else "SP",
             c.display_name,
-            TYPE_LABELS.get(c.cred_type, c.cred_type),
+            type_label(c),
             c.name,
             c.end.strftime("%Y-%m-%d"),
             str(c.days),
@@ -69,7 +60,7 @@ def format_table(records: list[Credential]) -> str:
 
 def cmd_scan(args: argparse.Namespace) -> int:
     config = Config.load(args.config)
-    now = datetime.now(timezone.utc)
+    now = parse_graph_datetime(args.now) if args.now else datetime.now(timezone.utc)
     session = get_session()
     result = collect(session, config)
     records = classify(result.credentials, config, now)
@@ -88,8 +79,8 @@ def cmd_scan(args: argparse.Namespace) -> int:
     if args.format == "table":
         print(format_table(records))
     else:
-        print("credmon scan --format files: implemented in Phase 3", file=sys.stderr)
-        return 2
+        paths = write_reports(records, result, now, args.out)
+        print(f"Wrote {paths.summary}, {paths.csv}, {paths.json}", file=sys.stderr)
     if should_fail(records, config):
         print(f"credmon: credentials at or above fail_on={config.fail_on}", file=sys.stderr)
         return 1

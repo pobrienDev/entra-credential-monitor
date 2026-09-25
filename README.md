@@ -18,5 +18,16 @@ It cannot change anything, and Graph never returns secret values, so the tool ne
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 az login --allow-no-subscriptions --tenant <tenant-id>
-credmon scan --format table
+credmon scan --format table      # print to the terminal
+credmon scan --out report        # write report/summary.md, credentials.csv, credentials.json
 ```
+
+The exit code is 1 when any credential is at or above the `fail_on` level in `config.yaml`.
+
+## Tests
+
+```bash
+pytest -q
+```
+
+Graph is mocked with sanitised fixtures under `tests/fixtures/`; no tenant access is needed.
