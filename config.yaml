@@ -7,6 +7,11 @@ thresholds:
 # Secrets whose lifetime (end minus start) exceeds this are flagged as a hygiene finding.
 long_lived_secret_days: 365
 
+# Rotation detection: an expiring credential is downgraded to "cleanup" when the same
+# object has a newer credential of the same type with more than this many days left.
+# Leave unset to use thresholds.warning_days.
+rotation_healthy_days: null
+
 # Include SAML signing certificates found on service principals in saml sign-on mode.
 include_saml_certificates: true
 

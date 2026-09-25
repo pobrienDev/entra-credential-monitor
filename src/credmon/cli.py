@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import argparse
 import logging
-import math
 import sys
 from datetime import datetime, timezone
 
 from credmon import __version__
+from credmon.classify import classify, should_fail, summarize
 from credmon.collect import Credential, collect
 from credmon.config import Config
 from credmon.graph import get_session
@@ -37,23 +37,33 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def format_table(records: list[Credential], now: datetime) -> str:
-    rows = []
-    for c in sorted(records, key=lambda r: r.end):
-        days = math.floor((c.end - now).total_seconds() / 86400)
-        rows.append(
-            (
-                "App" if c.object_type == "application" else "SP",
-                c.display_name,
-                TYPE_LABELS.get(c.cred_type, c.cred_type),
-                c.name,
-                c.end.strftime("%Y-%m-%d"),
-                str(days),
-            )
+def display_status(c: Credential) -> str:
+    """Status label for humans: hygiene shows only when nothing more urgent applies."""
+    if c.status == "ok" and c.long_lived:
+        return "HYGIENE"
+    label = (c.status or "ok").upper()
+    if c.excluded:
+        label += "*"
+    return label
+
+
+def format_table(records: list[Credential]) -> str:
+    rows = [
+        (
+            display_status(c),
+            "App" if c.object_type == "application" else "SP",
+            c.display_name,
+            TYPE_LABELS.get(c.cred_type, c.cred_type),
+            c.name,
+            c.end.strftime("%Y-%m-%d"),
+            str(c.days),
         )
-    headers = ("Object", "App", "Type", "Name", "Expires", "Days")
+        for c in records
+    ]
+    headers = ("Status", "Object", "App", "Type", "Name", "Expires", "Days")
     widths = [max(len(h), *(len(r[i]) for r in rows)) if rows else len(h) for i, h in enumerate(headers)]
-    line = lambda r: "  ".join(v.ljust(widths[i]) if i < 5 else v.rjust(widths[i]) for i, v in enumerate(r))
+    last = len(headers) - 1
+    line = lambda r: "  ".join(v.rjust(widths[i]) if i == last else v.ljust(widths[i]) for i, v in enumerate(r))
     return "\n".join([line(headers), "  ".join("-" * w for w in widths), *(line(r) for r in rows)])
 
 
@@ -62,6 +72,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
     now = datetime.now(timezone.utc)
     session = get_session()
     result = collect(session, config)
+    records = classify(result.credentials, config, now)
     print(
         f"Scanned {result.applications_scanned} applications and "
         f"{result.saml_service_principals_scanned} SAML service principals · "
@@ -69,11 +80,20 @@ def cmd_scan(args: argparse.Namespace) -> int:
         + (f" · skipped {result.first_party_skipped} first-party" if result.first_party_skipped else ""),
         file=sys.stderr,
     )
+    counts = summarize(records)
+    print(
+        "  ".join(f"{k}={v}" for k, v in counts.items() if v),
+        file=sys.stderr,
+    )
     if args.format == "table":
-        print(format_table(result.credentials, now))
-        return 0
-    print("credmon scan --format files: implemented in Phase 3", file=sys.stderr)
-    return 2
+        print(format_table(records))
+    else:
+        print("credmon scan --format files: implemented in Phase 3", file=sys.stderr)
+        return 2
+    if should_fail(records, config):
+        print(f"credmon: credentials at or above fail_on={config.fail_on}", file=sys.stderr)
+        return 1
+    return 0
 
 
 def cmd_notify(args: argparse.Namespace) -> int:

@@ -25,6 +25,7 @@ class Thresholds:
 class Config:
     thresholds: Thresholds = field(default_factory=Thresholds)
     long_lived_secret_days: int = 365
+    rotation_healthy_days: int | None = None  # defaults to thresholds.warning
     include_saml_certificates: bool = True
     tenant_id: str | None = None
     exclude_app_ids: tuple[str, ...] = ()
@@ -44,6 +45,9 @@ class Config:
                 notice=int(t.get("notice_days", 60)),
             ),
             long_lived_secret_days=int(raw.get("long_lived_secret_days", 365)),
+            rotation_healthy_days=(
+                int(raw["rotation_healthy_days"]) if raw.get("rotation_healthy_days") is not None else None
+            ),
             include_saml_certificates=bool(raw.get("include_saml_certificates", True)),
             tenant_id=(str(raw["tenant_id"]) if raw.get("tenant_id") else None),
             exclude_app_ids=tuple(str(a) for a in (raw.get("exclude_app_ids") or [])),
