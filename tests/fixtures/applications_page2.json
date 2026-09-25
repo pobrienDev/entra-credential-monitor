@@ -1,0 +1,33 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#applications(id,appId,displayName,passwordCredentials,keyCredentials)",
+  "value": [
+    {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "appId": "10000000-0000-4000-8000-000000000003",
+      "displayName": "payroll-export",
+      "keyCredentials": [
+        {
+          "customKeyIdentifier": "3q2+7w==",
+          "displayName": "CN=payroll-crt",
+          "endDateTime": "2026-11-30T00:00:00.1234567Z",
+          "key": null,
+          "keyId": "b0000000-0000-4000-8000-000000000001",
+          "startDateTime": "2025-11-30T00:00:00Z",
+          "type": "AsymmetricX509Cert",
+          "usage": "Verify"
+        }
+      ],
+      "passwordCredentials": [
+        {
+          "customKeyIdentifier": null,
+          "displayName": "prod-2025",
+          "endDateTime": "2026-10-09T12:00:00Z",
+          "hint": "xyz",
+          "keyId": "a0000000-0000-4000-8000-000000000003",
+          "secretText": null,
+          "startDateTime": "2024-10-09T12:00:00Z"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#servicePrincipals(id,appId,displayName,preferredSingleSignOnMode,passwordCredentials,keyCredentials,appOwnerOrganizationId)",
+  "value": [
+    {
+      "id": "20000000-0000-4000-8000-000000000001",
+      "appId": "30000000-0000-4000-8000-000000000001",
+      "displayName": "Microsoft Entra SAML Toolkit",
+      "preferredSingleSignOnMode": "saml",
+      "appOwnerOrganizationId": "6c3eca84-802c-4606-869d-c1b7c87d8320",
+      "keyCredentials": [
+        {
+          "customKeyIdentifier": "lSaGE1uHrF/LzESAd/v0p9eYAj96VuWTfaZ5ogvYSio=",
+          "displayName": "CN=Microsoft Azure Federated SSO Certificate",
+          "endDateTime": "2029-09-25T17:32:32Z",
+          "key": null,
+          "keyId": "c0000000-0000-4000-8000-000000000001",
+          "startDateTime": "2026-09-25T17:32:32Z",
+          "type": "AsymmetricX509Cert",
+          "usage": "Verify"
+        },
+        {
+          "customKeyIdentifier": "lSaGE1uHrF/LzESAd/v0p9eYAj96VuWTfaZ5ogvYSio=",
+          "displayName": "CN=Microsoft Azure Federated SSO Certificate",
+          "endDateTime": "2029-09-25T17:32:32Z",
+          "key": null,
+          "keyId": "c0000000-0000-4000-8000-000000000002",
+          "startDateTime": "2026-09-25T17:32:32Z",
+          "type": "AsymmetricX509Cert",
+          "usage": "Sign"
+        }
+      ],
+      "passwordCredentials": [
+        {
+          "customKeyIdentifier": "lSaGE1uHrF/LzESAd/v0p9eYAj96VuWTfaZ5ogvYSio=",
+          "displayName": "CN=Microsoft Azure Federated SSO Certificate",
+          "endDateTime": "2029-09-25T17:32:32Z",
+          "hint": null,
+          "keyId": "c0000000-0000-4000-8000-000000000002",
+          "secretText": null,
+          "startDateTime": "2026-09-25T17:32:32Z"
+        }
+      ]
+    },
+    {
+      "id": "20000000-0000-4000-8000-000000000002",
+      "appId": "30000000-0000-4000-8000-000000000002",
+      "displayName": "Microsoft Graph",
+      "preferredSingleSignOnMode": null,
+      "appOwnerOrganizationId": "f8cdef31-a31e-4b4a-93e4-5f571e91255a",
+      "keyCredentials": [],
+      "passwordCredentials": []
+    },
+    {
+      "id": "20000000-0000-4000-8000-000000000003",
+      "appId": "30000000-0000-4000-8000-000000000003",
+      "displayName": "First-party SAML app",
+      "preferredSingleSignOnMode": "saml",
+      "appOwnerOrganizationId": "f8cdef31-a31e-4b4a-93e4-5f571e91255a",
+      "keyCredentials": [
+        {
+          "customKeyIdentifier": "AAAA",
+          "displayName": "CN=Not yours",
+          "endDateTime": "2026-10-01T00:00:00Z",
+          "key": null,
+          "keyId": "c0000000-0000-4000-8000-000000000009",
+          "startDateTime": "2023-10-01T00:00:00Z",
+          "type": "AsymmetricX509Cert",
+          "usage": "Sign"
+        }
+      ],
+      "passwordCredentials": []
+    }
+  ]
+}

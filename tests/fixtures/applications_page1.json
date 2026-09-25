@@ -1,0 +1,39 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#applications(id,appId,displayName,passwordCredentials,keyCredentials)",
+  "@odata.nextLink": "https://graph.microsoft.com/v1.0/applications?$select=id,appId,displayName,passwordCredentials,keyCredentials&$top=999&$skiptoken=PAGE2",
+  "value": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "appId": "10000000-0000-4000-8000-000000000001",
+      "displayName": "seed-rotated",
+      "keyCredentials": [],
+      "passwordCredentials": [
+        {
+          "customKeyIdentifier": null,
+          "displayName": "new-secret",
+          "endDateTime": "2027-09-25T16:56:17.32Z",
+          "hint": "CuH",
+          "keyId": "a0000000-0000-4000-8000-000000000001",
+          "secretText": null,
+          "startDateTime": "2026-09-25T16:56:17.32Z"
+        },
+        {
+          "customKeyIdentifier": null,
+          "displayName": "old-secret",
+          "endDateTime": "2026-09-30T04:00:00Z",
+          "hint": "fhx",
+          "keyId": "a0000000-0000-4000-8000-000000000002",
+          "secretText": null,
+          "startDateTime": "2026-09-25T16:55:15.223Z"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "appId": "10000000-0000-4000-8000-000000000002",
+      "displayName": "no-credentials-app",
+      "keyCredentials": [],
+      "passwordCredentials": []
+    }
+  ]
+}
