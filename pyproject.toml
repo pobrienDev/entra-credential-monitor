@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "entra-credential-monitor"
-version = "0.1.0"
+version = "1.0.0"
 description = "Read-only monitor that finds expiring Entra app secrets, certificates and SAML signing certificates"
 readme = "README.md"
 requires-python = ">=3.11"
