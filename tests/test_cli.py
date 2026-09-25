@@ -88,3 +88,15 @@ def test_scan_rejects_bad_config(tmp_path, graph):
     bad.write_text("fail_on: sometimes\n")
     with pytest.raises(ValueError, match="fail_on"):
         main(["scan", "--config", str(bad)])
+
+
+def test_notify_dry_run_reads_report_and_plans(tmp_path, graph, capsys):
+    main(["scan", "--config", write_config(tmp_path, "never"), "--out", str(tmp_path / "out"), "--now", NOW])
+    capsys.readouterr()
+
+    rc = main(["notify", "--report", str(tmp_path / "out" / "credentials.json"), "--dry-run", "--now", NOW])
+
+    assert rc == 0
+    err = capsys.readouterr().err
+    assert "would create payroll-export: critical, no open issue" in err
+    assert "notify: 1 opened, 0 updated, 0 closed, 0 unchanged (dry run)" in err

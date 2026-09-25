@@ -50,6 +50,12 @@ jobs:
           path: report/
           retention-days: 30
 
+      - name: Open or close alert issues
+        run: credmon notify --report report/credentials.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+
       - name: Fail if credentials need attention
         if: steps.scan.outcome == 'failure'
         run: |

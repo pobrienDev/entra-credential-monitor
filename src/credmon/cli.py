@@ -12,7 +12,7 @@ from credmon.classify import classify, should_fail, summarize
 from credmon.collect import Credential, collect, parse_graph_datetime
 from credmon.config import Config
 from credmon.graph import get_session
-from credmon.report import display_status, type_label, write_reports
+from credmon.report import display_status, load_json, type_label, write_reports
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -35,6 +35,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     notify = sub.add_parser("notify", help="open or close GitHub issues from a report")
     notify.add_argument("--report", default="report/credentials.json", help="path to credentials.json")
+    notify.add_argument("--dry-run", action="store_true", help="print planned issue changes without touching GitHub")
+    notify.add_argument("--now", help=argparse.SUPPRESS)
     return parser
 
 
@@ -88,8 +90,23 @@ def cmd_scan(args: argparse.Namespace) -> int:
 
 
 def cmd_notify(args: argparse.Namespace) -> int:
-    print("credmon notify: implemented in Phase 5", file=sys.stderr)
-    return 2
+    from credmon.notify import client_from_env, plan_actions, apply_actions
+
+    records, meta = load_json(args.report)
+    now = parse_graph_datetime(args.now) if args.now else datetime.now(timezone.utc)
+    client = None if args.dry_run else client_from_env()
+    open_issues = client.list_open_issues() if client else []
+    actions = plan_actions(records, open_issues)
+    result = apply_actions(actions, client, now, dry_run=args.dry_run)
+    for a in actions:
+        print(("would " if args.dry_run else "") + a.describe(), file=sys.stderr)
+    print(
+        f"notify: {result.count('create')} opened, {result.count('update')} updated, "
+        f"{result.count('close')} closed, {result.count('noop')} unchanged"
+        + (" (dry run)" if args.dry_run else ""),
+        file=sys.stderr,
+    )
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
