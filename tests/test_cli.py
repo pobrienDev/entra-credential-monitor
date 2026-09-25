@@ -80,7 +80,7 @@ def test_scan_table_prints_rows(tmp_path, graph, capsys):
     assert "Microsoft Entra SAML Toolkit" in out
     assert "SAML cert" in out
     assert out.count("\n") == 2 + 5  # header, rule, five credentials
-    assert "CuH" not in out and "fhx" not in out  # hints never printed
+    assert "aaa" not in out and "bbb" not in out  # hints never printed
 
 
 def test_scan_rejects_bad_config(tmp_path, graph):

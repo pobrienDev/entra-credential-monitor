@@ -12,7 +12,7 @@
           "customKeyIdentifier": null,
           "displayName": "new-secret",
           "endDateTime": "2027-09-25T16:56:17.32Z",
-          "hint": "CuH",
+          "hint": "aaa",
           "keyId": "a0000000-0000-4000-8000-000000000001",
           "secretText": null,
           "startDateTime": "2026-09-25T16:56:17.32Z"
@@ -21,7 +21,7 @@
           "customKeyIdentifier": null,
           "displayName": "old-secret",
           "endDateTime": "2026-09-30T04:00:00Z",
-          "hint": "fhx",
+          "hint": "bbb",
           "keyId": "a0000000-0000-4000-8000-000000000002",
           "secretText": null,
           "startDateTime": "2026-09-25T16:55:15.223Z"
