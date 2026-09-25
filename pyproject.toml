@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "entra-credential-monitor"
+version = "0.1.0"
+description = "Read-only monitor that finds expiring Entra app secrets, certificates and SAML signing certificates"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Patrick O'Brien" }]
+dependencies = [
+    "azure-identity>=1.19,<2",
+    "requests>=2.32,<3",
+    "PyYAML>=6.0,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3,<9",
+    "responses>=0.25,<1",
+]
+
+[project.scripts]
+credmon = "credmon.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

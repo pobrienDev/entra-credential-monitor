@@ -1,0 +1,22 @@
+# Thresholds are inclusive: a credential with exactly critical_days left is critical.
+thresholds:
+  critical_days: 7
+  warning_days: 30
+  notice_days: 60
+
+# Secrets whose lifetime (end minus start) exceeds this are flagged as a hygiene finding.
+long_lived_secret_days: 365
+
+# Include SAML signing certificates found on service principals in saml sign-on mode.
+include_saml_certificates: true
+
+# Your tenant ID. Used to skip Microsoft first-party service principals, whose
+# appOwnerOrganizationId differs from yours. Not a secret.
+tenant_id: 6c3eca84-802c-4606-869d-c1b7c87d8320
+
+# appIds you have formally accepted risk on. They are still scanned but never alerted.
+exclude_app_ids: []
+
+# CLI exits non-zero when any credential is at or above this level.
+# One of: expired, critical, warning, notice, never
+fail_on: critical
