@@ -39,6 +39,15 @@
           "secretText": null,
           "startDateTime": "2026-09-25T17:32:32Z"
         }
+      ],
+      "owners": [
+        {
+          "@odata.type": "#microsoft.graph.user",
+          "id": "40000000-0000-4000-8000-000000000003",
+          "displayName": null,
+          "userPrincipalName": "idadmin@example.test",
+          "mail": null
+        }
       ]
     },
     {

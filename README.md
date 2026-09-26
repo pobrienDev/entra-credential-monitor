@@ -41,6 +41,8 @@ Critical and expired credentials each get exactly one issue for their whole life
 | `HYGIENE` | Healthy, but the secret's lifetime exceeds `long_lived_secret_days` | no |
 | `OK` | Nothing to do | no |
 
+Each row also names the object's **owners**, fetched in the same Graph request with `$expand=owners`, so an alert reaches a person. Objects that have credentials but no owners are counted at the top of the summary and called out in their issues, since an unowned app with a live secret is a common audit finding.
+
 Thresholds are inclusive: exactly 7 days left is critical. Excluded apps (`exclude_app_ids`) are still reported but never alerted, and never fail the run.
 
 ## Setup
@@ -48,7 +50,7 @@ Thresholds are inclusive: exactly 7 days left is critical. Excluded apps (`exclu
 ### 1. Entra: a reader identity with one permission
 
 1. Create an app registration, for example `credmon-reader`.
-2. Add the Microsoft Graph **application** permission `Application.Read.All` and grant admin consent.
+2. Add the Microsoft Graph **application** permission `Application.Read.All` and grant admin consent. To show owner names rather than object IDs, also add `User.ReadBasic.All`, or set `lookup_owners: false`.
 3. **Do not create a client secret.** Under Certificates & secrets, choose the Federated credentials tab and add a GitHub Actions credential with entity type **Environment**, your repository, and environment name `monitor`.
 
 ### 2. GitHub: an environment and two variables
@@ -72,6 +74,7 @@ thresholds:
 long_lived_secret_days: 365       # secrets with a longer lifetime are flagged HYGIENE
 rotation_healthy_days: null       # sibling must have more than this many days left; defaults to warning_days
 include_saml_certificates: true
+lookup_owners: true               # names owners in reports and issues; needs User.ReadBasic.All for names
 tenant_id: <your tenant id>       # used to skip Microsoft first-party service principals
 exclude_app_ids: []               # apps with formally accepted risk: reported, never alerted
 fail_on: critical                 # exit non-zero at or above this level: expired, critical, warning, notice, never
@@ -111,7 +114,6 @@ Microsoft Graph and GitHub are mocked with sanitised fixtures under `tests/fixtu
 ## Limitations and ideas
 
 - Warning and notice levels are report-only. Lower `critical_days` or raise `fail_on` if you want earlier pressure.
-- Owner lookup (`GET /applications/{id}/owners`) would let issues mention a person; it needs `User.ReadBasic.All` for names.
 - Very large tenants could use `/applications/delta` to fetch only changes.
 - Scheduled workflows in public repositories are paused after 60 days without activity; GitHub lets you re-enable them.
 

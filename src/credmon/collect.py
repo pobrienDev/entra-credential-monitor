@@ -23,10 +23,59 @@ SP_FIELDS = (
     "id,appId,displayName,preferredSingleSignOnMode,"
     "passwordCredentials,keyCredentials,appOwnerOrganizationId"
 )
+OWNERS_EXPAND = "owners($select=id,displayName,userPrincipalName,mail)"
 
 SECRET = "secret"
 CERTIFICATE = "certificate"
 SAML_CERTIFICATE = "saml_certificate"
+
+
+@dataclass(frozen=True)
+class Owner:
+    id: str
+    display_name: str | None = None
+    user_principal_name: str | None = None
+    mail: str | None = None
+    kind: str = "user"  # user, servicePrincipal, ...
+
+    @property
+    def label(self) -> str:
+        """Best human label available: name plus UPN when both exist, else whatever we have."""
+        name = self.display_name
+        contact = self.user_principal_name or self.mail
+        if name and contact:
+            return f"{name} <{contact}>"
+        return name or contact or self.id
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "display_name": self.display_name,
+            "user_principal_name": self.user_principal_name,
+            "mail": self.mail,
+            "kind": self.kind,
+        }
+
+    @classmethod
+    def from_graph(cls, raw: dict) -> "Owner":
+        kind = (raw.get("@odata.type") or "#microsoft.graph.directoryObject").rsplit(".", 1)[-1]
+        return cls(
+            id=raw["id"],
+            display_name=raw.get("displayName"),
+            user_principal_name=raw.get("userPrincipalName"),
+            mail=raw.get("mail"),
+            kind=kind,
+        )
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Owner":
+        return cls(
+            id=d["id"],
+            display_name=d.get("display_name"),
+            user_principal_name=d.get("user_principal_name"),
+            mail=d.get("mail"),
+            kind=d.get("kind", "user"),
+        )
 
 
 @dataclass
@@ -41,6 +90,7 @@ class Credential:
     start: datetime | None
     end: datetime
     thumbprint: str | None = None
+    owners: tuple[Owner, ...] = ()
     # Filled in by classify
     days: int | None = None
     status: str | None = None
@@ -51,6 +101,10 @@ class Credential:
     def uid(self) -> str:
         """Stable identity for a credential across runs."""
         return f"{self.object_id}:{self.key_id}"
+
+    @property
+    def owners_text(self) -> str:
+        return "; ".join(o.label for o in self.owners)
 
     def to_dict(self) -> dict:
         """JSON-safe representation. Never includes a secret value or hint."""
@@ -67,6 +121,7 @@ class Credential:
             "start": self.start.isoformat() if self.start else None,
             "end": self.end.isoformat(),
             "thumbprint": self.thumbprint,
+            "owners": [o.to_dict() for o in self.owners],
             "long_lived": self.long_lived,
             "excluded": self.excluded,
         }
@@ -84,6 +139,7 @@ class Credential:
             start=parse_graph_datetime(d.get("start")),
             end=parse_graph_datetime(d["end"]),
             thumbprint=d.get("thumbprint"),
+            owners=tuple(Owner.from_dict(o) for o in d.get("owners") or []),
             days=d.get("days"),
             status=d.get("status"),
             long_lived=bool(d.get("long_lived", False)),
@@ -97,6 +153,14 @@ class CollectResult:
     applications_scanned: int = 0
     saml_service_principals_scanned: int = 0
     first_party_skipped: int = 0
+    owners_looked_up: bool = False
+
+    @property
+    def unowned_objects(self) -> int:
+        """Objects that have credentials but no owners: a common audit finding."""
+        if not self.owners_looked_up:
+            return 0
+        return len({c.object_id for c in self.credentials if not c.owners})
 
 
 def parse_graph_datetime(value: str | None) -> datetime | None:
@@ -135,6 +199,10 @@ def thumbprint_from_key_identifier(value: str | None) -> str | None:
         return value
 
 
+def _owners(obj: dict) -> tuple[Owner, ...]:
+    return tuple(Owner.from_graph(o) for o in obj.get("owners") or [] if o.get("id"))
+
+
 def _credential(obj: dict, object_type: str, raw: dict, cred_type: str) -> Credential | None:
     end = parse_graph_datetime(raw.get("endDateTime"))
     if end is None:
@@ -151,6 +219,7 @@ def _credential(obj: dict, object_type: str, raw: dict, cred_type: str) -> Crede
         start=parse_graph_datetime(raw.get("startDateTime")),
         end=end,
         thumbprint=thumbprint_from_key_identifier(raw.get("customKeyIdentifier")),
+        owners=_owners(obj),
     )
 
 
@@ -191,14 +260,19 @@ def normalize_saml_service_principal(sp: dict) -> list[Credential]:
 
 def collect(session, config: Config) -> CollectResult:
     """Scan the tenant and return every credential of interest."""
-    result = CollectResult()
+    result = CollectResult(owners_looked_up=config.lookup_owners)
+    app_params = {"$select": APP_FIELDS, "$top": "999"}
+    sp_params = {"$select": SP_FIELDS, "$top": "999"}
+    if config.lookup_owners:
+        app_params["$expand"] = OWNERS_EXPAND
+        sp_params["$expand"] = OWNERS_EXPAND
 
-    for app in get_all(session, f"{GRAPH}/applications", {"$select": APP_FIELDS, "$top": "999"}):
+    for app in get_all(session, f"{GRAPH}/applications", app_params):
         result.applications_scanned += 1
         result.credentials.extend(normalize_application(app))
 
     if config.include_saml_certificates:
-        for sp in get_all(session, f"{GRAPH}/servicePrincipals", {"$select": SP_FIELDS, "$top": "999"}):
+        for sp in get_all(session, f"{GRAPH}/servicePrincipals", sp_params):
             if sp.get("preferredSingleSignOnMode") != "saml":
                 continue
             owner = sp.get("appOwnerOrganizationId")

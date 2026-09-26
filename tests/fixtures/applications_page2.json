@@ -27,6 +27,22 @@
           "secretText": null,
           "startDateTime": "2024-10-09T12:00:00Z"
         }
+      ],
+      "owners": [
+        {
+          "@odata.type": "#microsoft.graph.user",
+          "id": "40000000-0000-4000-8000-000000000001",
+          "displayName": "Pat Example",
+          "userPrincipalName": "pat@example.test",
+          "mail": "pat@example.test"
+        },
+        {
+          "@odata.type": "#microsoft.graph.servicePrincipal",
+          "id": "40000000-0000-4000-8000-000000000002",
+          "displayName": "deploy-bot",
+          "userPrincipalName": null,
+          "mail": null
+        }
       ]
     }
   ]

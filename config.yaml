@@ -15,6 +15,10 @@ rotation_healthy_days: null
 # Include SAML signing certificates found on service principals in saml sign-on mode.
 include_saml_certificates: true
 
+# Fetch each object's owners in the same Graph request so reports and issues name a person.
+# Owner names need User.ReadBasic.All on the reader identity; without it only IDs are shown.
+lookup_owners: true
+
 # Your tenant ID. Used to skip Microsoft first-party service principals, whose
 # appOwnerOrganizationId differs from yours. Not a secret.
 tenant_id: 6c3eca84-802c-4606-869d-c1b7c87d8320

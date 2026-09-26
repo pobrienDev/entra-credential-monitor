@@ -27,6 +27,7 @@ class Config:
     long_lived_secret_days: int = 365
     rotation_healthy_days: int | None = None  # defaults to thresholds.warning
     include_saml_certificates: bool = True
+    lookup_owners: bool = True
     tenant_id: str | None = None
     exclude_app_ids: tuple[str, ...] = ()
     fail_on: str = "critical"
@@ -49,6 +50,7 @@ class Config:
                 int(raw["rotation_healthy_days"]) if raw.get("rotation_healthy_days") is not None else None
             ),
             include_saml_certificates=bool(raw.get("include_saml_certificates", True)),
+            lookup_owners=bool(raw.get("lookup_owners", True)),
             tenant_id=(str(raw["tenant_id"]) if raw.get("tenant_id") else None),
             exclude_app_ids=tuple(str(a) for a in (raw.get("exclude_app_ids") or [])),
             fail_on=str(raw.get("fail_on", "critical")),

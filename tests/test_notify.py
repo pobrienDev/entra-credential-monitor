@@ -5,7 +5,7 @@ import pytest
 import responses
 
 from credmon.classify import CLEANUP, CRITICAL, EXPIRED, OK, WARNING
-from credmon.collect import SAML_CERTIFICATE, SECRET, Credential
+from credmon.collect import SAML_CERTIFICATE, SECRET, Credential, Owner
 from credmon.notify import (
     LABEL,
     GitHubIssues,
@@ -23,9 +23,10 @@ NOW = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
 API = "https://api.github.com/repos/o/r"
 
 
-def cred(name, status, days=2, obj=None, cred_type=SECRET, excluded=False, thumbprint=None):
+def cred(name, status, days=2, obj=None, cred_type=SECRET, excluded=False, thumbprint=None, owners=()):
     obj = obj or f"obj-{name}"
     return Credential(
+        owners=tuple(owners),
         object_type="servicePrincipal" if cred_type == SAML_CERTIFICATE else "application",
         object_id=obj,
         app_id=f"app-{obj}",
@@ -77,6 +78,17 @@ def test_saml_body_has_saml_steps_and_link():
 def test_title_has_no_day_count():
     c = cred("prod", CRITICAL, days=2)
     assert issue_title(c) == 'CRITICAL: obj-prod secret "prod" expires 2026-10-07'
+
+
+def test_body_lists_owners_or_flags_unowned():
+    owner = Owner(id="1", display_name="Pat Example", user_principal_name="pat@example.test")
+    owned = issue_body(cred("a", CRITICAL, owners=[owner]), NOW)
+    assert "| Owners | Pat Example <pat@example.test> |" in owned
+    assert "no owners" not in owned
+
+    unowned = issue_body(cred("b", CRITICAL), NOW)
+    assert "| Owners | _none set_ |" in unowned
+    assert "This object has **no owners**" in unowned
 
 
 def test_parse_markers_tolerates_garbage():
