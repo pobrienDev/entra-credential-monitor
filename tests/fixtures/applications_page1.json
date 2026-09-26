@@ -26,14 +26,16 @@
           "secretText": null,
           "startDateTime": "2026-09-25T16:55:15.223Z"
         }
-      ]
+      ],
+      "owners": []
     },
     {
       "id": "00000000-0000-4000-8000-000000000002",
       "appId": "10000000-0000-4000-8000-000000000002",
       "displayName": "no-credentials-app",
       "keyCredentials": [],
-      "passwordCredentials": []
+      "passwordCredentials": [],
+      "owners": []
     }
   ]
 }

@@ -118,12 +118,23 @@ def issue_body(c: Credential, now: datetime) -> str:
     ]
     if c.thumbprint:
         lines.append(f"| Thumbprint | `{c.thumbprint}` |")
+    if c.owners:
+        lines.append("| Owners | " + ", ".join(o.label.replace("|", "/") for o in c.owners) + " |")
+    else:
+        lines.append("| Owners | _none set_ |")
     lines += [
         f"| Status | **{c.status.upper()}** as of {now:%Y-%m-%d %H:%M} UTC |",
         "",
         "### What to do",
         "",
         steps.rstrip(),
+    ]
+    if not c.owners:
+        lines += [
+            "",
+            "> This object has **no owners**. Add one under **Owners** so the next alert reaches a person.",
+        ]
+    lines += [
         "",
         f"[Open in Entra admin center]({_portal_link(c)})",
         "",

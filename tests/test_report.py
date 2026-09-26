@@ -3,17 +3,18 @@ import json
 from datetime import datetime, timedelta, timezone
 
 from credmon.classify import classify
-from credmon.collect import CERTIFICATE, SAML_CERTIFICATE, SECRET, CollectResult, Credential
+from credmon.collect import CERTIFICATE, SAML_CERTIFICATE, SECRET, CollectResult, Credential, Owner
 from credmon.config import Config
 from credmon.report import load_json, render_summary, write_reports
 
 NOW = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
 
 
-def cred(name, days, obj=None, cred_type=SECRET, lifetime_days=None, excluded=False, display=None):
+def cred(name, days, obj=None, cred_type=SECRET, lifetime_days=None, excluded=False, display=None, owners=()):
     obj = obj or f"obj-{name}"
     end = NOW + timedelta(days=days)
     return Credential(
+        owners=tuple(owners),
         object_type="servicePrincipal" if cred_type == SAML_CERTIFICATE else "application",
         object_id=obj,
         app_id=f"app-{obj}",
@@ -88,12 +89,12 @@ def test_write_reports_creates_three_consistent_files(tmp_path):
     assert rows[0]["display_name"] == "zombie" and rows[0]["days"] == "-3"
     assert set(rows[0]) == {
         "status", "days", "object_type", "object_id", "app_id", "display_name", "cred_type",
-        "key_id", "name", "start", "end", "thumbprint", "long_lived", "excluded",
+        "key_id", "name", "start", "end", "thumbprint", "owners", "long_lived", "excluded",
     }
 
     payload = json.loads(paths.json.read_text())
     assert payload["generated_at"] == "2026-10-05T12:00:00+00:00"
-    assert payload["scanned"] == {"applications": 14, "saml_service_principals": 3, "first_party_skipped": 0}
+    assert payload["scanned"] == {"applications": 14, "saml_service_principals": 3, "first_party_skipped": 0, "owners_looked_up": False, "unowned_objects": 0}
     assert payload["counts"]["critical"] == 2
     assert [c["name"] for c in payload["credentials"]] == [c.name for c in records]
     assert payload["credentials"][0]["end"] == "2026-10-02T12:00:00+00:00"
@@ -102,6 +103,33 @@ def test_write_reports_creates_three_consistent_files(tmp_path):
     for p in (paths.summary, paths.csv, paths.json):
         text = p.read_text().lower()
         assert "hint" not in text and "secrettext" not in text
+
+
+def test_owner_column_appears_only_when_looked_up():
+    owner = Owner(id="1", display_name="Pat Example", user_principal_name="pat@example.test")
+    records = classify([cred("a", 2, owners=[owner]), cred("b", 3)], Config(), NOW)
+
+    without = render_summary(records, CollectResult(credentials=records, owners_looked_up=False), NOW)
+    assert "Owners" not in without and "unowned" not in without.lower()
+
+    with_owners = render_summary(records, CollectResult(credentials=records, owners_looked_up=True), NOW)
+    assert "| Status | App | Type | Name | Expires | Days | Owners |" in with_owners
+    assert "| 2 | Pat Example |" in with_owners
+    assert "| 3 | _none_ |" in with_owners
+    assert "**1** object with credentials but no owners" in with_owners
+
+
+def test_csv_and_json_carry_owners(tmp_path):
+    owner = Owner(id="1", display_name="Pat Example", user_principal_name="pat@example.test")
+    records = classify([cred("a", 2, owners=[owner])], Config(), NOW)
+    paths = write_reports(records, CollectResult(credentials=records, owners_looked_up=True), NOW, tmp_path)
+
+    with open(paths.csv, newline="") as fh:
+        row = next(csv.DictReader(fh))
+    assert row["owners"] == "Pat Example <pat@example.test>"
+    payload = json.loads(paths.json.read_text())
+    assert payload["scanned"]["unowned_objects"] == 0
+    assert payload["credentials"][0]["owners"][0]["user_principal_name"] == "pat@example.test"
 
 
 def test_json_round_trip(tmp_path):

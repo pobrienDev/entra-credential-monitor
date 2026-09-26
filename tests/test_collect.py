@@ -119,3 +119,60 @@ def test_collect_skips_service_principals_when_disabled(session):
 
     assert result.credentials == []
     assert len(responses.calls) == 1
+
+
+def test_owners_are_normalised_from_expanded_graph_response():
+    app = load_fixture("applications_page2.json")["value"][0]
+    records = normalize_application(app)
+
+    owners = records[0].owners
+    assert [o.kind for o in owners] == ["user", "servicePrincipal"]
+    assert owners[0].label == "Pat Example <pat@example.test>"
+    assert owners[1].label == "deploy-bot"
+    assert records[0].owners_text == "Pat Example <pat@example.test>; deploy-bot"
+    assert records[1].owners == owners  # both credentials on the app share them
+
+
+def test_owner_label_falls_back_to_upn_then_id():
+    from credmon.collect import Owner
+
+    assert Owner(id="x", user_principal_name="u@t").label == "u@t"
+    assert Owner(id="x").label == "x"
+
+
+@responses.activate
+def test_collect_requests_owner_expansion_and_counts_unowned(session):
+    page1 = load_fixture("applications_page1.json")
+    responses.get(f"{GRAPH}/applications", json=page1)
+    responses.get(page1["@odata.nextLink"], json=load_fixture("applications_page2.json"))
+    responses.get(f"{GRAPH}/servicePrincipals", json=load_fixture("service_principals.json"))
+
+    result = collect(session, Config(tenant_id=TENANT))
+
+    assert "%24expand=owners%28%24select%3Did%2CdisplayName%2CuserPrincipalName%2Cmail%29" in responses.calls[0].request.url
+    assert "%24expand=owners" in responses.calls[2].request.url
+    assert result.owners_looked_up is True
+    assert result.unowned_objects == 1  # seed-rotated has credentials and no owners
+    saml = next(r for r in result.credentials if r.cred_type == SAML_CERTIFICATE)
+    assert saml.owners[0].label == "idadmin@example.test"
+
+
+@responses.activate
+def test_collect_skips_owner_expansion_when_disabled(session):
+    responses.get(f"{GRAPH}/applications", json={"value": []})
+    responses.get(f"{GRAPH}/servicePrincipals", json={"value": []})
+
+    result = collect(session, Config(lookup_owners=False))
+
+    assert "expand" not in responses.calls[0].request.url
+    assert result.owners_looked_up is False
+    assert result.unowned_objects == 0
+
+
+def test_owners_survive_json_round_trip():
+    app = load_fixture("applications_page2.json")["value"][0]
+    c = normalize_application(app)[0]
+    from credmon.collect import Credential
+
+    back = Credential.from_dict(c.to_dict())
+    assert back.owners == c.owners

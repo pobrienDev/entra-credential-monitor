@@ -19,7 +19,7 @@ from credmon.collect import Credential, CollectResult
 TYPE_LABELS = {"secret": "Secret", "certificate": "Certificate", "saml_certificate": "SAML cert"}
 CSV_FIELDS = [
     "status", "days", "object_type", "object_id", "app_id", "display_name",
-    "cred_type", "key_id", "name", "start", "end", "thumbprint", "long_lived", "excluded",
+    "cred_type", "key_id", "name", "start", "end", "thumbprint", "owners", "long_lived", "excluded",
 ]
 SUMMARY_MD = "summary.md"
 CREDENTIALS_CSV = "credentials.csv"
@@ -51,16 +51,26 @@ def _md_escape(text: str) -> str:
     return text.replace("|", "\\|").replace("\n", " ")
 
 
-def _md_table(records: list[Credential]) -> str:
-    lines = [
-        "| Status | App | Type | Name | Expires | Days |",
-        "|--------|-----|------|------|---------|-----:|",
-    ]
+def _owners_cell(c: Credential, looked_up: bool) -> str:
+    if not looked_up:
+        return ""
+    if not c.owners:
+        return "_none_"
+    return _md_escape(", ".join(o.display_name or o.user_principal_name or o.mail or o.id for o in c.owners))
+
+
+def _md_table(records: list[Credential], owners: bool = False) -> str:
+    head = "| Status | App | Type | Name | Expires | Days |" + (" Owners |" if owners else "")
+    rule = "|--------|-----|------|------|---------|-----:|" + ("--------|" if owners else "")
+    lines = [head, rule]
     for c in records:
-        lines.append(
+        row = (
             f"| {display_status(c)} | {_md_escape(c.display_name)} | {type_label(c)} "
             f"| {_md_escape(c.name)} | {c.end:%Y-%m-%d} | {c.days} |"
         )
+        if owners:
+            row += f" {_owners_cell(c, True)} |"
+        lines.append(row)
     return "\n".join(lines)
 
 
@@ -79,8 +89,14 @@ def render_summary(records: list[Credential], stats: CollectResult, now: datetim
         " · ".join(f"**{k}** {v}" for k, v in counts.items() if v) or "No credentials found.",
         "",
     ]
+    if stats.owners_looked_up and stats.unowned_objects:
+        parts += [
+            f"**{stats.unowned_objects}** object{'s' if stats.unowned_objects != 1 else ''} with credentials "
+            "but no owners. Assign owners so alerts reach a person.",
+            "",
+        ]
     if attention:
-        parts += [_md_table(attention), ""]
+        parts += [_md_table(attention, owners=stats.owners_looked_up), ""]
     else:
         parts += ["Nothing needs attention.", ""]
     if healthy:
@@ -88,7 +104,7 @@ def render_summary(records: list[Credential], stats: CollectResult, now: datetim
             "<details>",
             f"<summary>{len(healthy)} healthy credential{'s' if len(healthy) != 1 else ''}</summary>",
             "",
-            _md_table(healthy),
+            _md_table(healthy, owners=stats.owners_looked_up),
             "",
             "</details>",
             "",
@@ -107,7 +123,9 @@ def write_csv(records: list[Credential], path: Path) -> None:
         writer = csv.DictWriter(fh, fieldnames=CSV_FIELDS)
         writer.writeheader()
         for c in records:
-            writer.writerow(c.to_dict())
+            row = c.to_dict()
+            row["owners"] = c.owners_text
+            writer.writerow(row)
 
 
 def write_json(records: list[Credential], stats: CollectResult, now: datetime, path: Path) -> None:
@@ -118,6 +136,8 @@ def write_json(records: list[Credential], stats: CollectResult, now: datetime, p
             "applications": stats.applications_scanned,
             "saml_service_principals": stats.saml_service_principals_scanned,
             "first_party_skipped": stats.first_party_skipped,
+            "owners_looked_up": stats.owners_looked_up,
+            "unowned_objects": stats.unowned_objects,
         },
         "counts": summarize(records),
         "credentials": [c.to_dict() for c in records],
