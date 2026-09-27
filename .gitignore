@@ -7,3 +7,14 @@ dist/
 .pytest_cache/
 report/
 .env
+
+# Azure Function variant
+azure-function/config.yaml
+azure-function/local.settings.json
+azure-function/*.zip
+azure-function/terraform/.terraform/
+azure-function/terraform/*.tfstate
+azure-function/terraform/*.tfstate.*
+azure-function/terraform/*.tfvars
+!azure-function/terraform/*.tfvars.example
+azure-function/terraform/*.tfplan
