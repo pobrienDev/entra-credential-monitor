@@ -19,7 +19,7 @@ from credmon.collect import Credential, CollectResult
 TYPE_LABELS = {"secret": "Secret", "certificate": "Certificate", "saml_certificate": "SAML cert"}
 CSV_FIELDS = [
     "status", "days", "object_type", "object_id", "app_id", "display_name",
-    "cred_type", "key_id", "name", "start", "end", "thumbprint", "owners", "long_lived", "excluded",
+    "cred_type", "key_id", "name", "start", "end", "thumbprint", "owners", "long_lived", "excluded", "unowned",
 ]
 SUMMARY_MD = "summary.md"
 CREDENTIALS_CSV = "credentials.csv"
@@ -89,10 +89,11 @@ def render_summary(records: list[Credential], stats: CollectResult, now: datetim
         " · ".join(f"**{k}** {v}" for k, v in counts.items() if v) or "No credentials found.",
         "",
     ]
-    if stats.owners_looked_up and stats.unowned_objects:
+    unowned = stats.unowned_findings()
+    if unowned:
         parts += [
-            f"**{stats.unowned_objects}** object{'s' if stats.unowned_objects != 1 else ''} with credentials "
-            "but no owners. Assign owners so alerts reach a person.",
+            f"**{len(unowned)}** object{'s' if len(unowned) != 1 else ''} with credentials "
+            "but no owners. See the finding below.",
             "",
         ]
     if attention:
@@ -107,6 +108,22 @@ def render_summary(records: list[Credential], stats: CollectResult, now: datetim
             _md_table(healthy, owners=stats.owners_looked_up),
             "",
             "</details>",
+            "",
+        ]
+    if unowned:
+        parts += [
+            "### Finding: unowned objects",
+            "",
+            "These objects hold live credentials but have no owners, so nobody is accountable for rotating them. "
+            "Assign an owner under **Owners** on each app registration or enterprise application.",
+            "",
+            "| Object | App | Credentials | Soonest expiry |",
+            "|--------|-----|------------:|----------------|",
+            *(
+                f"| {'App' if f.object_type == 'application' else 'SP'} | {_md_escape(f.display_name)}"
+                f"{'*' if f.excluded else ''} | {f.credential_count} | {f.soonest_end:%Y-%m-%d} |"
+                for f in unowned
+            ),
             "",
         ]
     if any(c.excluded for c in records):
@@ -140,6 +157,7 @@ def write_json(records: list[Credential], stats: CollectResult, now: datetime, p
             "unowned_objects": stats.unowned_objects,
         },
         "counts": summarize(records),
+        "findings": {"unowned_objects": [f.to_dict() for f in stats.unowned_findings()]},
         "credentials": [c.to_dict() for c in records],
     }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")

@@ -129,7 +129,7 @@ def issue_body(c: Credential, now: datetime) -> str:
         "",
         steps.rstrip(),
     ]
-    if not c.owners:
+    if c.unowned:
         lines += [
             "",
             "> This object has **no owners**. Add one under **Owners** so the next alert reaches a person.",

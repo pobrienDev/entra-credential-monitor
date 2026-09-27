@@ -96,6 +96,7 @@ class Credential:
     status: str | None = None
     long_lived: bool = False
     excluded: bool = False
+    unowned: bool = False  # owners were looked up and none exist
 
     @property
     def uid(self) -> str:
@@ -124,6 +125,7 @@ class Credential:
             "owners": [o.to_dict() for o in self.owners],
             "long_lived": self.long_lived,
             "excluded": self.excluded,
+            "unowned": self.unowned,
         }
 
     @classmethod
@@ -144,6 +146,7 @@ class Credential:
             status=d.get("status"),
             long_lived=bool(d.get("long_lived", False)),
             excluded=bool(d.get("excluded", False)),
+            unowned=bool(d.get("unowned", False)),
         )
 
 
@@ -158,9 +161,52 @@ class CollectResult:
     @property
     def unowned_objects(self) -> int:
         """Objects that have credentials but no owners: a common audit finding."""
+        return len(self.unowned_findings())
+
+    def unowned_findings(self) -> list["UnownedObject"]:
+        """One finding per object that has credentials but no owners, soonest expiry first."""
         if not self.owners_looked_up:
-            return 0
-        return len({c.object_id for c in self.credentials if not c.owners})
+            return []
+        by_object: dict[str, list[Credential]] = {}
+        for c in self.credentials:
+            if c.unowned:
+                by_object.setdefault(c.object_id, []).append(c)
+        findings = [
+            UnownedObject(
+                object_type=creds[0].object_type,
+                object_id=object_id,
+                app_id=creds[0].app_id,
+                display_name=creds[0].display_name,
+                credential_count=len(creds),
+                soonest_end=min(c.end for c in creds),
+                excluded=all(c.excluded for c in creds),
+            )
+            for object_id, creds in by_object.items()
+        ]
+        findings.sort(key=lambda f: (f.soonest_end, f.display_name.lower()))
+        return findings
+
+
+@dataclass(frozen=True)
+class UnownedObject:
+    object_type: str
+    object_id: str
+    app_id: str
+    display_name: str
+    credential_count: int
+    soonest_end: datetime
+    excluded: bool = False
+
+    def to_dict(self) -> dict:
+        return {
+            "object_type": self.object_type,
+            "object_id": self.object_id,
+            "app_id": self.app_id,
+            "display_name": self.display_name,
+            "credential_count": self.credential_count,
+            "soonest_end": self.soonest_end.isoformat(),
+            "excluded": self.excluded,
+        }
 
 
 def parse_graph_datetime(value: str | None) -> datetime | None:
@@ -285,5 +331,6 @@ def collect(session, config: Config) -> CollectResult:
     excluded = set(config.exclude_app_ids)
     for c in result.credentials:
         c.excluded = c.app_id in excluded
+        c.unowned = config.lookup_owners and not c.owners
 
     return result

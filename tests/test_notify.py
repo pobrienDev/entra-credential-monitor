@@ -86,9 +86,14 @@ def test_body_lists_owners_or_flags_unowned():
     assert "| Owners | Pat Example <pat@example.test> |" in owned
     assert "no owners" not in owned
 
-    unowned = issue_body(cred("b", CRITICAL), NOW)
+    c = cred("b", CRITICAL)
+    c.unowned = True
+    unowned = issue_body(c, NOW)
     assert "| Owners | _none set_ |" in unowned
     assert "This object has **no owners**" in unowned
+
+    not_looked_up = issue_body(cred("c", CRITICAL), NOW)  # owners empty but lookup disabled
+    assert "no owners" not in not_looked_up
 
 
 def test_parse_markers_tolerates_garbage():
