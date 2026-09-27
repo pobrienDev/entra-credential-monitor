@@ -29,7 +29,11 @@ if az functionapp config appsettings list -g "$RG" -n "$APP" --query "[?name=='A
   echo "removed key-based AzureWebJobsStorage setting (identity-based access stays)"
 fi
 
-status=$(az rest --method GET --url "$(az functionapp show -g "$RG" -n "$APP" --query id -o tsv)/deployments?api-version=2023-12-01" \
-  --query "value[0].properties.status" -o tsv)
-[ "$status" = "4" ] || { echo "deployment status $status (4 = success)"; exit 1; }
+# Verify through the SCM (Kudu) API with the CLI's own Entra token. The ARM deployments
+# endpoint appends an HTML error page to its JSON on Flex apps, which breaks --query.
+token=$(az account get-access-token --query accessToken -o tsv)
+status=$(curl -sf -H "Authorization: Bearer $token" "https://${APP}.scm.azurewebsites.net/api/deployments/latest" \
+  | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("status"), d.get("complete"))')
+unset token
+[ "$status" = "4 True" ] || { echo "deployment status/complete: $status (expected: 4 True)"; exit 1; }
 echo "deployed to $APP"
