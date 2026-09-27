@@ -153,6 +153,9 @@ def test_collect_requests_owner_expansion_and_counts_unowned(session):
     assert "%24expand=owners" in responses.calls[2].request.url
     assert result.owners_looked_up is True
     assert result.unowned_objects == 1  # seed-rotated has credentials and no owners
+    assert {r.display_name for r in result.credentials if r.unowned} == {"seed-rotated"}
+    finding = result.unowned_findings()[0]
+    assert (finding.display_name, finding.credential_count) == ("seed-rotated", 2)
     saml = next(r for r in result.credentials if r.cred_type == SAML_CERTIFICATE)
     assert saml.owners[0].label == "idadmin@example.test"
 
@@ -167,6 +170,7 @@ def test_collect_skips_owner_expansion_when_disabled(session):
     assert "expand" not in responses.calls[0].request.url
     assert result.owners_looked_up is False
     assert result.unowned_objects == 0
+    assert result.unowned_findings() == []
 
 
 def test_owners_survive_json_round_trip():

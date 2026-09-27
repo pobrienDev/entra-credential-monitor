@@ -89,7 +89,7 @@ def test_write_reports_creates_three_consistent_files(tmp_path):
     assert rows[0]["display_name"] == "zombie" and rows[0]["days"] == "-3"
     assert set(rows[0]) == {
         "status", "days", "object_type", "object_id", "app_id", "display_name", "cred_type",
-        "key_id", "name", "start", "end", "thumbprint", "owners", "long_lived", "excluded",
+        "key_id", "name", "start", "end", "thumbprint", "owners", "long_lived", "excluded", "unowned",
     }
 
     payload = json.loads(paths.json.read_text())
@@ -108,6 +108,7 @@ def test_write_reports_creates_three_consistent_files(tmp_path):
 def test_owner_column_appears_only_when_looked_up():
     owner = Owner(id="1", display_name="Pat Example", user_principal_name="pat@example.test")
     records = classify([cred("a", 2, owners=[owner]), cred("b", 3)], Config(), NOW)
+    records[1].unowned = True  # collect() sets this when owners were looked up and none exist
 
     without = render_summary(records, CollectResult(credentials=records, owners_looked_up=False), NOW)
     assert "Owners" not in without and "unowned" not in without.lower()
@@ -117,6 +118,47 @@ def test_owner_column_appears_only_when_looked_up():
     assert "| 2 | Pat Example |" in with_owners
     assert "| 3 | _none_ |" in with_owners
     assert "**1** object with credentials but no owners" in with_owners
+
+
+def test_unowned_finding_section_and_json(tmp_path):
+    owner = Owner(id="1", display_name="Pat Example")
+    records = classify(
+        [
+            cred("a", 2, obj="hr-sync", owners=[owner]),
+            cred("b", 40, obj="payroll"),
+            cred("c", 5, obj="payroll"),
+            cred("d", 300, obj="legacy", cred_type=SAML_CERTIFICATE, excluded=True),
+        ],
+        Config(),
+        NOW,
+    )
+    for r in records:
+        r.unowned = not r.owners
+    stats = CollectResult(credentials=records, owners_looked_up=True)
+
+    findings = stats.unowned_findings()
+    assert [(f.display_name, f.credential_count, f.excluded) for f in findings] == [("payroll", 2, False), ("legacy", 1, True)]
+    assert findings[0].soonest_end == NOW + timedelta(days=5)
+
+    md = render_summary(records, stats, NOW)
+    assert "**2** objects with credentials but no owners. See the finding below." in md
+    assert "### Finding: unowned objects" in md
+    assert "| App | payroll | 2 | 2026-10-10 |" in md
+    assert "| SP | legacy* | 1 | 2027-08-01 |" in md
+
+    paths = write_reports(records, stats, NOW, tmp_path)
+    payload = json.loads(paths.json.read_text())
+    assert [f["display_name"] for f in payload["findings"]["unowned_objects"]] == ["payroll", "legacy"]
+    assert payload["findings"]["unowned_objects"][0]["soonest_end"] == "2026-10-10T12:00:00+00:00"
+    with open(paths.csv, newline="") as fh:
+        rows = {r["display_name"]: r["unowned"] for r in csv.DictReader(fh)}
+    assert rows == {"hr-sync": "False", "payroll": "True", "legacy": "True"}
+
+
+def test_no_unowned_section_when_owners_not_looked_up():
+    records = classify([cred("a", 2)], Config(), NOW)
+    md = render_summary(records, CollectResult(credentials=records, owners_looked_up=False), NOW)
+    assert "Finding" not in md and "no owners" not in md
 
 
 def test_csv_and_json_carry_owners(tmp_path):

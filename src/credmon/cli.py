@@ -74,6 +74,8 @@ def cmd_scan(args: argparse.Namespace) -> int:
         file=sys.stderr,
     )
     counts = summarize(records)
+    if result.owners_looked_up:
+        counts["unowned"] = result.unowned_objects
     print(
         "  ".join(f"{k}={v}" for k, v in counts.items() if v),
         file=sys.stderr,

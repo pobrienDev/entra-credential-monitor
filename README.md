@@ -41,7 +41,7 @@ Critical and expired credentials each get exactly one issue for their whole life
 | `HYGIENE` | Healthy, but the secret's lifetime exceeds `long_lived_secret_days` | no |
 | `OK` | Nothing to do | no |
 
-Each row also names the object's **owners**, fetched in the same Graph request with `$expand=owners`, so an alert reaches a person. Objects that have credentials but no owners are counted at the top of the summary and called out in their issues, since an unowned app with a live secret is a common audit finding.
+Each row also names the object's **owners**, fetched in the same Graph request with `$expand=owners`, so an alert reaches a person. Objects that have credentials but no owners are a separate **finding**: counted at the top of the summary, listed in their own table with credential count and soonest expiry, exported under `findings.unowned_objects` in the JSON, and called out in their issues. An unowned app with a live secret is a common audit result, because nobody is accountable for rotating it.
 
 Thresholds are inclusive: exactly 7 days left is critical. Excluded apps (`exclude_app_ids`) are still reported but never alerted, and never fail the run.
 
