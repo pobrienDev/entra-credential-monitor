@@ -18,5 +18,18 @@ sed "s#entra-credential-monitor@main#entra-credential-monitor@${CREDMON_REF}#" r
 
 (cd "$build" && zip -q -r "$OLDPWD/credmon-function.zip" function_app.py host.json requirements.txt config.yaml)
 az functionapp deployment source config-zip \
-  --resource-group "$RG" --name "$APP" --src credmon-function.zip --build-remote true --output none
+  --resource-group "$RG" --name "$APP" --src credmon-function.zip --build-remote true --output none \
+  || true  # the CLI's post-deploy health probe can fail while the host restarts; the deployment itself is checked below
+
+# The azurerm provider injects a key-based AzureWebJobsStorage connection string on
+# every apply, with an empty key because shared keys are disabled. The host prefers it
+# over AzureWebJobsStorage__accountName and fails auth, so remove it if present.
+if az functionapp config appsettings list -g "$RG" -n "$APP" --query "[?name=='AzureWebJobsStorage']" -o tsv | grep -q .; then
+  az functionapp config appsettings delete -g "$RG" -n "$APP" --setting-names AzureWebJobsStorage --output none
+  echo "removed key-based AzureWebJobsStorage setting (identity-based access stays)"
+fi
+
+status=$(az rest --method GET --url "$(az functionapp show -g "$RG" -n "$APP" --query id -o tsv)/deployments?api-version=2023-12-01" \
+  --query "value[0].properties.status" -o tsv)
+[ "$status" = "4" ] || { echo "deployment status $status (4 = success)"; exit 1; }
 echo "deployed to $APP"
