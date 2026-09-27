@@ -60,6 +60,8 @@ Thresholds are inclusive: exactly 7 days left is critical. Excluded apps (`exclu
 
 That's all. The workflow's built-in `GITHUB_TOKEN` handles issues because `monitor.yml` grants `issues: write`.
 
+If you manage Entra with Terraform, the reader identity is about forty lines: see [`credmon.tf` in entra-terraform](https://github.com/pobrienDev/entra-terraform/blob/main/credmon.tf), which declares the app, its service principal, the federated credential and the consent grants, and was used to import the portal-created app without changing its client ID.
+
 ### 3. Configure and run
 
 Edit `config.yaml`, set `tenant_id`, and either wait for the daily 12:00 UTC schedule or run the `credential-monitor` workflow from the Actions tab.
@@ -115,6 +117,7 @@ Microsoft Graph and GitHub are mocked with sanitised fixtures under `tests/fixtu
 
 - Warning and notice levels are report-only. Lower `critical_days` or raise `fail_on` if you want earlier pressure.
 - Very large tenants could use `/applications/delta` to fetch only changes.
+- The reader identity is managed in Terraform in the sibling `entra-terraform` repo; an Azure Functions variant with a managed identity would be the other correct answer to "run it with no secrets".
 - Scheduled workflows in public repositories are paused after 60 days without activity; GitHub lets you re-enable them.
 
 ## License
