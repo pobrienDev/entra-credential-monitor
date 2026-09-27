@@ -100,3 +100,17 @@ def test_notify_dry_run_reads_report_and_plans(tmp_path, graph, capsys):
     err = capsys.readouterr().err
     assert "would create payroll-export: critical, no open issue" in err
     assert "notify: 1 opened, 0 updated, 0 closed, 0 unchanged (dry run)" in err
+
+
+def test_run_scan_returns_records_and_paths(tmp_path, graph, session):
+    from credmon.runner import run_scan
+    from credmon.collect import parse_graph_datetime
+    from credmon.config import Config
+
+    result = run_scan(Config(tenant_id="6c3eca84-802c-4606-869d-c1b7c87d8320"), now=parse_graph_datetime(NOW), out_dir=tmp_path, session=session)
+
+    assert len(result.records) == 5
+    assert result.failed is True
+    assert result.counts["critical"] == 1 and result.counts["unowned"] == 1
+    assert result.headline().startswith("Scanned 3 applications and 1 SAML")
+    assert result.paths.json.exists()

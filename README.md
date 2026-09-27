@@ -66,6 +66,21 @@ If you manage Entra with Terraform, the reader identity is about forty lines: se
 
 Edit `config.yaml`, set `tenant_id`, and either wait for the daily 12:00 UTC schedule or run the `credential-monitor` workflow from the Actions tab.
 
+## Azure Functions variant
+
+The other correct answer to "run it with no secrets": a timer-triggered Function on Flex Consumption whose **system-assigned managed identity** holds the same two read-only Graph permissions. It scans daily at 12:00 UTC and writes the three reports to a blob container at `reports/<yyyy>/<mm>/<dd>/` and `reports/latest/`. Storage is accessed with the identity too, and the account has shared keys disabled, so there is no key or connection string anywhere, including in Terraform state.
+
+```bash
+cd azure-function/terraform
+cp terraform.tfvars.example terraform.tfvars      # tenant and subscription IDs
+terraform init && terraform apply                 # 15 resources: RG, storage, Log Analytics, App Insights, plan, app, roles, Graph consent
+cd .. && ./deploy.sh                              # zip deploy with remote build; no Core Tools needed
+```
+
+Notification is left to the GitHub Actions variant on purpose. Posting to GitHub from Azure would need a token, which would be the first secret in the design. Point whatever you already alert with at `reports/latest/credentials.json` instead.
+
+Two things learned building it, both handled by the files above: the `azurerm` provider needs `storage_use_azuread = true` to manage a keyless storage account, and it injects a key-based `AzureWebJobsStorage` setting on every apply that the host prefers over the identity setting, so `deploy.sh` removes it.
+
 ## Configuration
 
 ```yaml
@@ -117,7 +132,7 @@ Microsoft Graph and GitHub are mocked with sanitised fixtures under `tests/fixtu
 
 - Warning and notice levels are report-only. Lower `critical_days` or raise `fail_on` if you want earlier pressure.
 - Very large tenants could use `/applications/delta` to fetch only changes.
-- The reader identity is managed in Terraform in the sibling `entra-terraform` repo; an Azure Functions variant with a managed identity would be the other correct answer to "run it with no secrets".
+- The reader identity is managed in Terraform in the sibling `entra-terraform` repo.
 - Scheduled workflows in public repositories are paused after 60 days without activity; GitHub lets you re-enable them.
 
 ## License

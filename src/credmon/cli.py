@@ -8,11 +8,11 @@ import sys
 from datetime import datetime, timezone
 
 from credmon import __version__
-from credmon.classify import classify, should_fail, summarize
-from credmon.collect import Credential, collect, parse_graph_datetime
+from credmon.collect import Credential, parse_graph_datetime
 from credmon.config import Config
 from credmon.graph import get_session
-from credmon.report import display_status, load_json, type_label, write_reports
+from credmon.report import display_status, load_json, type_label
+from credmon.runner import run_scan
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -63,29 +63,15 @@ def format_table(records: list[Credential]) -> str:
 def cmd_scan(args: argparse.Namespace) -> int:
     config = Config.load(args.config)
     now = parse_graph_datetime(args.now) if args.now else datetime.now(timezone.utc)
-    session = get_session()
-    result = collect(session, config)
-    records = classify(result.credentials, config, now)
-    print(
-        f"Scanned {result.applications_scanned} applications and "
-        f"{result.saml_service_principals_scanned} SAML service principals · "
-        f"{len(result.credentials)} credentials"
-        + (f" · skipped {result.first_party_skipped} first-party" if result.first_party_skipped else ""),
-        file=sys.stderr,
-    )
-    counts = summarize(records)
-    if result.owners_looked_up:
-        counts["unowned"] = result.unowned_objects
-    print(
-        "  ".join(f"{k}={v}" for k, v in counts.items() if v),
-        file=sys.stderr,
-    )
+    result = run_scan(config, now=now, out_dir=None if args.format == "table" else args.out, session=get_session())
+    print(result.headline(), file=sys.stderr)
+    print("  ".join(f"{k}={v}" for k, v in result.counts.items() if v), file=sys.stderr)
     if args.format == "table":
-        print(format_table(records))
+        print(format_table(result.records))
     else:
-        paths = write_reports(records, result, now, args.out)
-        print(f"Wrote {paths.summary}, {paths.csv}, {paths.json}", file=sys.stderr)
-    if should_fail(records, config):
+        p = result.paths
+        print(f"Wrote {p.summary}, {p.csv}, {p.json}", file=sys.stderr)
+    if result.failed:
         print(f"credmon: credentials at or above fail_on={config.fail_on}", file=sys.stderr)
         return 1
     return 0

@@ -1,0 +1,5 @@
+azure-functions>=1.21,<2
+azure-identity>=1.19,<2
+azure-storage-blob>=12.24,<13
+# The monitor itself, straight from the public repo. Pin to a tag for production.
+entra-credential-monitor @ git+https://github.com/pobrienDev/entra-credential-monitor@main

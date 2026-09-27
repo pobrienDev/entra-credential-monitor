@@ -1,0 +1,9 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "CREDMON_STORAGE_ACCOUNT": "<storage account name from terraform output>",
+    "CREDMON_REPORTS_CONTAINER": "reports"
+  }
+}
