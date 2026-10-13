@@ -14,16 +14,27 @@ from pathlib import Path
 
 from credmon import __version__
 from credmon.classify import OK, summarize
-from credmon.collect import Credential, CollectResult
+from credmon.collect import CERTIFICATE, SAML_CERTIFICATE, SECRET, CollectResult, Credential
 
-TYPE_LABELS = {"secret": "Secret", "certificate": "Certificate", "saml_certificate": "SAML cert"}
+TYPE_LABELS = {SECRET: "Secret", CERTIFICATE: "Certificate", SAML_CERTIFICATE: "SAML cert"}
 CSV_FIELDS = [
-    "status", "days", "object_type", "object_id", "app_id", "display_name",
-    "cred_type", "key_id", "name", "start", "end", "thumbprint", "owners", "long_lived", "excluded", "unowned",
+    "status",
+    "days",
+    "object_type",
+    "object_id",
+    "app_id",
+    "display_name",
+    "cred_type",
+    "key_id",
+    "name",
+    "start",
+    "end",
+    "thumbprint",
+    "owners",
+    "long_lived",
+    "excluded",
+    "unowned",
 ]
-SUMMARY_MD = "summary.md"
-CREDENTIALS_CSV = "credentials.csv"
-CREDENTIALS_JSON = "credentials.json"
 
 
 @dataclass(frozen=True)
@@ -37,10 +48,7 @@ def display_status(c: Credential) -> str:
     """Label for humans. HYGIENE shows only when nothing more urgent applies."""
     if c.status == OK and c.long_lived:
         return "HYGIENE"
-    label = (c.status or OK).upper()
-    if c.excluded:
-        label += "*"
-    return label
+    return c.status.upper() + ("*" if c.excluded else "")
 
 
 def type_label(c: Credential) -> str:
@@ -51,15 +59,7 @@ def _md_escape(text: str) -> str:
     return text.replace("|", "\\|").replace("\n", " ")
 
 
-def _owners_cell(c: Credential, looked_up: bool) -> str:
-    if not looked_up:
-        return ""
-    if not c.owners:
-        return "_none_"
-    return _md_escape(", ".join(o.display_name or o.user_principal_name or o.mail or o.id for o in c.owners))
-
-
-def _md_table(records: list[Credential], owners: bool = False) -> str:
+def _md_table(records: list[Credential], owners: bool) -> str:
     head = "| Status | App | Type | Name | Expires | Days |" + (" Owners |" if owners else "")
     rule = "|--------|-----|------|------|---------|-----:|" + ("--------|" if owners else "")
     lines = [head, rule]
@@ -69,7 +69,8 @@ def _md_table(records: list[Credential], owners: bool = False) -> str:
             f"| {_md_escape(c.name)} | {c.end:%Y-%m-%d} | {c.days} |"
         )
         if owners:
-            row += f" {_owners_cell(c, True)} |"
+            names = ", ".join(o.display_name or o.user_principal_name or o.mail or o.id for o in c.owners)
+            row += f" {_md_escape(names) if names else '_none_'} |"
         lines.append(row)
     return "\n".join(lines)
 
@@ -78,34 +79,28 @@ def render_summary(records: list[Credential], stats: CollectResult, now: datetim
     counts = summarize(records)
     attention = [c for c in records if c.status != OK or c.long_lived]
     healthy = [c for c in records if c.status == OK and not c.long_lived]
+    unowned = stats.unowned_findings()
+    plural = lambda n: "s" if n != 1 else ""  # noqa: E731
 
     parts = [
         f"## Credential expiry report · {now:%Y-%m-%d %H:%M} UTC",
         "",
         f"Scanned {stats.applications_scanned} applications and "
-        f"{stats.saml_service_principals_scanned} SAML service principals · "
-        f"{len(records)} credentials",
+        f"{stats.saml_service_principals_scanned} SAML service principals · {len(records)} credentials",
         "",
         " · ".join(f"**{k}** {v}" for k, v in counts.items() if v) or "No credentials found.",
         "",
     ]
-    unowned = stats.unowned_findings()
     if unowned:
-        parts += [
-            f"**{len(unowned)}** object{'s' if len(unowned) != 1 else ''} with credentials "
-            "but no owners. See the finding below.",
-            "",
-        ]
-    if attention:
-        parts += [_md_table(attention, owners=stats.owners_looked_up), ""]
-    else:
-        parts += ["Nothing needs attention.", ""]
+        n = len(unowned)
+        parts += [f"**{n}** object{plural(n)} with credentials but no owners. See the finding below.", ""]
+    parts += [_md_table(attention, stats.owners_looked_up) if attention else "Nothing needs attention.", ""]
     if healthy:
         parts += [
             "<details>",
-            f"<summary>{len(healthy)} healthy credential{'s' if len(healthy) != 1 else ''}</summary>",
+            f"<summary>{len(healthy)} healthy credential{plural(len(healthy))}</summary>",
             "",
-            _md_table(healthy, owners=stats.owners_looked_up),
+            _md_table(healthy, stats.owners_looked_up),
             "",
             "</details>",
             "",
@@ -128,10 +123,10 @@ def render_summary(records: list[Credential], stats: CollectResult, now: datetim
         ]
     if any(c.excluded for c in records):
         parts += ["\\* excluded via `exclude_app_ids`: reported but never alerted.", ""]
-    parts += [
+    parts.append(
         f"<sub>credmon {__version__} · rotation detection marks superseded credentials as CLEANUP · "
-        "HYGIENE marks secrets with lifetimes over the configured limit</sub>",
-    ]
+        "HYGIENE marks secrets with lifetimes over the configured limit</sub>"
+    )
     return "\n".join(parts) + "\n"
 
 
@@ -140,12 +135,11 @@ def write_csv(records: list[Credential], path: Path) -> None:
         writer = csv.DictWriter(fh, fieldnames=CSV_FIELDS)
         writer.writeheader()
         for c in records:
-            row = c.to_dict()
-            row["owners"] = c.owners_text
-            writer.writerow(row)
+            writer.writerow({**c.to_dict(), "owners": c.owners_text})
 
 
 def write_json(records: list[Credential], stats: CollectResult, now: datetime, path: Path) -> None:
+    unowned = stats.unowned_findings()
     payload = {
         "generated_at": now.isoformat(),
         "credmon_version": __version__,
@@ -154,27 +148,25 @@ def write_json(records: list[Credential], stats: CollectResult, now: datetime, p
             "saml_service_principals": stats.saml_service_principals_scanned,
             "first_party_skipped": stats.first_party_skipped,
             "owners_looked_up": stats.owners_looked_up,
-            "unowned_objects": stats.unowned_objects,
+            "unowned_objects": len(unowned),
         },
         "counts": summarize(records),
-        "findings": {"unowned_objects": [f.to_dict() for f in stats.unowned_findings()]},
+        "findings": {"unowned_objects": [f.to_dict() for f in unowned]},
         "credentials": [c.to_dict() for c in records],
     }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
-def load_json(path: str | Path) -> tuple[list[Credential], dict]:
-    """Read credentials.json back. Returns (records, metadata)."""
+def load_json(path: str | Path) -> list[Credential]:
+    """Read the credentials back out of credentials.json."""
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    records = [Credential.from_dict(d) for d in payload.get("credentials", [])]
-    meta = {k: v for k, v in payload.items() if k != "credentials"}
-    return records, meta
+    return [Credential.from_dict(d) for d in payload["credentials"]]
 
 
 def write_reports(records: list[Credential], stats: CollectResult, now: datetime, out_dir: str | Path) -> ReportPaths:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    paths = ReportPaths(out / SUMMARY_MD, out / CREDENTIALS_CSV, out / CREDENTIALS_JSON)
+    paths = ReportPaths(out / "summary.md", out / "credentials.csv", out / "credentials.json")
     paths.summary.write_text(render_summary(records, stats, now), encoding="utf-8")
     write_csv(records, paths.csv)
     write_json(records, stats, now, paths.json)

@@ -132,7 +132,8 @@ resource "azurerm_role_assignment" "func_table" {
   principal_id         = azurerm_function_app_flex_consumption.main.identity[0].principal_id
 }
 
-# Whoever runs Terraform and deploy.sh needs to upload the package with the CLI.
+# Lets whoever runs Terraform read the reports with `az storage blob ... --auth-mode login`.
+# Deployment itself goes through the app's own identity and does not need this.
 data "azurerm_client_config" "current" {}
 
 resource "azurerm_role_assignment" "deployer_blob" {

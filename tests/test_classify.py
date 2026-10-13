@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -19,7 +19,7 @@ from credmon.classify import (
 from credmon.collect import CERTIFICATE, SAML_CERTIFICATE, SECRET, Credential
 from credmon.config import Config, Thresholds
 
-NOW = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 5, 12, 0, tzinfo=UTC)
 T = Thresholds()  # 7 / 30 / 60
 
 
@@ -55,11 +55,11 @@ def test_days_remaining_floors():
     [
         (-1, EXPIRED),
         (0, CRITICAL),
-        (7, CRITICAL),   # exactly at the critical threshold
+        (7, CRITICAL),  # exactly at the critical threshold
         (8, WARNING),
-        (30, WARNING),   # exactly at the warning threshold
+        (30, WARNING),  # exactly at the warning threshold
         (31, NOTICE),
-        (60, NOTICE),    # exactly at the notice threshold
+        (60, NOTICE),  # exactly at the notice threshold
         (61, OK),
         (1095, OK),
     ],
@@ -147,7 +147,8 @@ def test_saml_certificate_rotation_on_service_principal():
 def test_mark_rotated_handles_single_credential():
     r = cred("solo", 2)
     r.days, r.status = 2, CRITICAL
-    assert mark_rotated([r], 30)[0].status == CRITICAL
+    mark_rotated([r], 30)
+    assert r.status == CRITICAL
 
 
 def test_long_lived_secret_flag():
@@ -199,7 +200,14 @@ def test_should_fail_ignores_excluded():
 
 def test_summarize_counts():
     out = classify(
-        [cred("a", -1), cred("b", 2), cred("c", 20), cred("d", 100, lifetime_days=800), cred("e", 2, obj="x"), cred("f", 400, obj="x")],
+        [
+            cred("a", -1),
+            cred("b", 2),
+            cred("c", 20),
+            cred("d", 100, lifetime_days=800),
+            cred("e", 2, obj="x"),
+            cred("f", 400, obj="x"),
+        ],
         Config(),
         NOW,
     )

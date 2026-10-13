@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "entra-credential-monitor"
-version = "1.0.0"
+dynamic = ["version"]
 description = "Read-only monitor that finds expiring Entra app secrets, certificates and SAML signing certificates"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -20,6 +20,7 @@ dependencies = [
 dev = [
     "pytest>=8.3,<9",
     "responses>=0.25,<1",
+    "ruff>=0.17,<1",
 ]
 
 [project.scripts]
@@ -27,6 +28,17 @@ credmon = "credmon.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.dynamic]
+version = { attr = "credmon.__version__" }
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-include = ["azure-function/function_app.py"]
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "B", "SIM", "UP", "I"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

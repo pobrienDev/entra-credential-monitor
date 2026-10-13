@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import responses
 
@@ -20,10 +20,10 @@ TENANT = "6c3eca84-802c-4606-869d-c1b7c87d8320"
 
 
 def test_parse_graph_datetime_handles_z_and_fractions():
-    assert parse_graph_datetime("2026-09-30T04:00:00Z") == datetime(2026, 9, 30, 4, tzinfo=timezone.utc)
-    assert parse_graph_datetime("2026-09-25T16:56:17.32Z") == datetime(2026, 9, 25, 16, 56, 17, 320000, tzinfo=timezone.utc)
+    assert parse_graph_datetime("2026-09-30T04:00:00Z") == datetime(2026, 9, 30, 4, tzinfo=UTC)
+    assert parse_graph_datetime("2026-09-25T16:56:17.32Z") == datetime(2026, 9, 25, 16, 56, 17, 320000, tzinfo=UTC)
     seven = parse_graph_datetime("2026-11-30T00:00:00.1234567Z")
-    assert seven == datetime(2026, 11, 30, 0, 0, 0, 123456, tzinfo=timezone.utc)
+    assert seven == datetime(2026, 11, 30, 0, 0, 0, 123456, tzinfo=UTC)
     assert parse_graph_datetime(None) is None
 
 
@@ -44,8 +44,8 @@ def test_normalize_application_one_record_per_credential():
     assert secret.app_id == app["appId"]
     assert secret.display_name == "payroll-export"
     assert secret.key_id == "a0000000-0000-4000-8000-000000000003"
-    assert secret.end == datetime(2026, 10, 9, 12, tzinfo=timezone.utc)
-    assert secret.start == datetime(2024, 10, 9, 12, tzinfo=timezone.utc)
+    assert secret.end == datetime(2026, 10, 9, 12, tzinfo=UTC)
+    assert secret.start == datetime(2024, 10, 9, 12, tzinfo=UTC)
     assert records[1].thumbprint == "DEADBEEF"
 
 
@@ -64,14 +64,18 @@ def test_saml_sign_verify_password_collapse_to_one_row():
     assert cert.object_type == "servicePrincipal"
     assert cert.key_id == "c0000000-0000-4000-8000-000000000002"  # the Sign key
     assert cert.name == "CN=Microsoft Azure Federated SSO Certificate"
-    assert cert.end == datetime(2029, 9, 25, 17, 32, 32, tzinfo=timezone.utc)
+    assert cert.end == datetime(2029, 9, 25, 17, 32, 32, tzinfo=UTC)
     assert cert.thumbprint == "952686135B87AC5FCBCC448077FBF4A7D798023F7A56E5937DA679A20BD84A2A"
 
 
 def test_saml_two_certificates_stay_two_rows():
     sp = load_fixture("service_principals.json")["value"][0]
-    extra = dict(sp["keyCredentials"][1], keyId="c0000000-0000-4000-8000-00000000ffff",
-                 customKeyIdentifier="AAAA", endDateTime="2027-01-01T00:00:00Z")
+    extra = dict(
+        sp["keyCredentials"][1],
+        keyId="c0000000-0000-4000-8000-00000000ffff",
+        customKeyIdentifier="AAAA",
+        endDateTime="2027-01-01T00:00:00Z",
+    )
     sp = dict(sp, keyCredentials=sp["keyCredentials"] + [extra])
 
     records = normalize_saml_service_principal(sp)
@@ -149,10 +153,13 @@ def test_collect_requests_owner_expansion_and_counts_unowned(session):
 
     result = collect(session, Config(tenant_id=TENANT))
 
-    assert "%24expand=owners%28%24select%3Did%2CdisplayName%2CuserPrincipalName%2Cmail%29" in responses.calls[0].request.url
+    assert (
+        "%24expand=owners%28%24select%3Did%2CdisplayName%2CuserPrincipalName%2Cmail%29"
+        in responses.calls[0].request.url
+    )
     assert "%24expand=owners" in responses.calls[2].request.url
     assert result.owners_looked_up is True
-    assert result.unowned_objects == 1  # seed-rotated has credentials and no owners
+    assert len(result.unowned_findings()) == 1  # seed-rotated has credentials and no owners
     assert {r.display_name for r in result.credentials if r.unowned} == {"seed-rotated"}
     finding = result.unowned_findings()[0]
     assert (finding.display_name, finding.credential_count) == ("seed-rotated", 2)
@@ -169,7 +176,6 @@ def test_collect_skips_owner_expansion_when_disabled(session):
 
     assert "expand" not in responses.calls[0].request.url
     assert result.owners_looked_up is False
-    assert result.unowned_objects == 0
     assert result.unowned_findings() == []
 
 
