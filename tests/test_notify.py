@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import responses
@@ -17,9 +17,10 @@ from credmon.notify import (
     parse_markers,
     plan_actions,
     sync,
+    tally,
 )
 
-NOW = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 5, 12, 0, tzinfo=UTC)
 API = "https://api.github.com/repos/o/r"
 
 
@@ -110,8 +111,13 @@ def kinds(actions):
 
 
 def test_creates_for_critical_and_expired_only():
-    records = [cred("crit", CRITICAL), cred("dead", EXPIRED, days=-1), cred("warn", WARNING, days=20),
-               cred("ok", OK, days=200), cred("old", CLEANUP)]
+    records = [
+        cred("crit", CRITICAL),
+        cred("dead", EXPIRED, days=-1),
+        cred("warn", WARNING, days=20),
+        cred("ok", OK, days=200),
+        cred("old", CLEANUP),
+    ]
     assert kinds(plan_actions(records, [])) == [("create", "crit"), ("create", "dead")]
 
 
@@ -180,13 +186,14 @@ def test_one_scan_can_create_update_and_close_together():
 
 @pytest.fixture
 def gh():
-    return GitHubIssues(repo="o/r", token="t", api="https://api.github.com")
+    return GitHubIssues("o/r", "t")
 
 
-def test_dry_run_makes_no_requests(gh):
+def test_dry_run_makes_no_requests():
     with responses.RequestsMock(assert_all_requests_are_fired=False) as rsps:
-        result = apply_actions(plan_actions([cred("crit", CRITICAL)], []), gh, NOW, dry_run=True)
-        assert result.count("create") == 1
+        actions = sync([cred("crit", CRITICAL)], None, NOW)
+        assert [a.kind for a in actions] == ["create"]
+        assert tally(actions) == "notify: 1 opened, 0 updated, 0 closed, 0 unchanged"
         assert len(rsps.calls) == 0
 
 
@@ -239,23 +246,38 @@ def test_noop_only_run_makes_no_writes(gh):
     c = cred("crit", CRITICAL)
     responses.get(f"{API}/issues", json=[{"number": 1, "title": "t", "body": issue_body(c, NOW)}])
 
-    result = sync([c], gh, NOW)
+    actions = sync([c], gh, NOW)
 
-    assert result.count("noop") == 1
+    assert [a.kind for a in actions] == ["noop"]
     assert len(responses.calls) == 1  # only the list call
 
 
 @responses.activate
 def test_list_open_issues_paginates_and_skips_pull_requests(gh):
     c = cred("crit", CRITICAL)
-    page1 = [{"number": i, "title": "t", "body": f"<!-- credmon:uid=u{i} --><!-- credmon:status=critical -->"} for i in range(100)]
+    page1 = [
+        {"number": i, "title": "t", "body": f"<!-- credmon:uid=u{i} --><!-- credmon:status=critical -->"}
+        for i in range(100)
+    ]
     page2 = [
         {"number": 200, "title": "real", "body": issue_body(c, NOW)},
         {"number": 201, "title": "a PR", "body": issue_body(c, NOW), "pull_request": {}},
         {"number": 202, "title": "manual", "body": "no marker"},
     ]
-    responses.get(f"{API}/issues", json=page1, match=[responses.matchers.query_param_matcher({"state": "open", "labels": LABEL, "per_page": "100", "page": "1"})])
-    responses.get(f"{API}/issues", json=page2, match=[responses.matchers.query_param_matcher({"state": "open", "labels": LABEL, "per_page": "100", "page": "2"})])
+    responses.get(
+        f"{API}/issues",
+        json=page1,
+        match=[
+            responses.matchers.query_param_matcher({"state": "open", "labels": LABEL, "per_page": "100", "page": "1"})
+        ],
+    )
+    responses.get(
+        f"{API}/issues",
+        json=page2,
+        match=[
+            responses.matchers.query_param_matcher({"state": "open", "labels": LABEL, "per_page": "100", "page": "2"})
+        ],
+    )
 
     issues = gh.list_open_issues()
 

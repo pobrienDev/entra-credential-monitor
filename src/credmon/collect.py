@@ -9,9 +9,10 @@ from __future__ import annotations
 import base64
 import binascii
 import logging
+import re
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from credmon.config import Config
 from credmon.graph import GRAPH, get_all
@@ -19,10 +20,7 @@ from credmon.graph import GRAPH, get_all
 log = logging.getLogger(__name__)
 
 APP_FIELDS = "id,appId,displayName,passwordCredentials,keyCredentials"
-SP_FIELDS = (
-    "id,appId,displayName,preferredSingleSignOnMode,"
-    "passwordCredentials,keyCredentials,appOwnerOrganizationId"
-)
+SP_FIELDS = "id,appId,displayName,preferredSingleSignOnMode,passwordCredentials,keyCredentials,appOwnerOrganizationId"
 OWNERS_EXPAND = "owners($select=id,displayName,userPrincipalName,mail)"
 
 SECRET = "secret"
@@ -57,7 +55,7 @@ class Owner:
         }
 
     @classmethod
-    def from_graph(cls, raw: dict) -> "Owner":
+    def from_graph(cls, raw: dict) -> Owner:
         kind = (raw.get("@odata.type") or "#microsoft.graph.directoryObject").rsplit(".", 1)[-1]
         return cls(
             id=raw["id"],
@@ -68,7 +66,7 @@ class Owner:
         )
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Owner":
+    def from_dict(cls, d: dict) -> Owner:
         return cls(
             id=d["id"],
             display_name=d.get("display_name"),
@@ -129,7 +127,7 @@ class Credential:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Credential":
+    def from_dict(cls, d: dict) -> Credential:
         return cls(
             object_type=d["object_type"],
             object_id=d["object_id"],
@@ -158,19 +156,15 @@ class CollectResult:
     first_party_skipped: int = 0
     owners_looked_up: bool = False
 
-    @property
-    def unowned_objects(self) -> int:
-        """Objects that have credentials but no owners: a common audit finding."""
-        return len(self.unowned_findings())
+    def unowned_findings(self) -> list[UnownedObject]:
+        """One finding per object that has credentials but no owners, soonest expiry first.
 
-    def unowned_findings(self) -> list["UnownedObject"]:
-        """One finding per object that has credentials but no owners, soonest expiry first."""
-        if not self.owners_looked_up:
-            return []
-        by_object: dict[str, list[Credential]] = {}
+        A common audit result: nobody is accountable for rotating these.
+        """
+        by_object: dict[str, list[Credential]] = defaultdict(list)
         for c in self.credentials:
             if c.unowned:
-                by_object.setdefault(c.object_id, []).append(c)
+                by_object[c.object_id].append(c)
         findings = [
             UnownedObject(
                 object_type=creds[0].object_type,
@@ -209,30 +203,18 @@ class UnownedObject:
         }
 
 
-def parse_graph_datetime(value: str | None) -> datetime | None:
-    """Parse Graph ISO 8601 timestamps into aware UTC datetimes.
+_FRACTION = re.compile(r"(\.\d{6})\d+")
 
-    Graph may return up to seven fractional-second digits; Python accepts six.
+
+def parse_graph_datetime(value: str | None) -> datetime | None:
+    """Parse a Graph ISO 8601 timestamp into an aware UTC datetime.
+
+    Graph may return seven fractional-second digits; Python accepts six.
     """
     if not value:
         return None
-    text = value.strip()
-    if text.endswith("Z"):
-        text = text[:-1] + "+00:00"
-    if "." in text:
-        head, rest = text.split(".", 1)
-        frac = rest
-        tz = ""
-        for sep in ("+", "-"):
-            if sep in rest:
-                frac, tzpart = rest.split(sep, 1)
-                tz = sep + tzpart
-                break
-        text = f"{head}.{frac[:6].ljust(6, '0')}{tz}"
-    dt = datetime.fromisoformat(text)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+    dt = datetime.fromisoformat(_FRACTION.sub(r"\1", value.strip()))
+    return (dt if dt.tzinfo else dt.replace(tzinfo=UTC)).astimezone(UTC)
 
 
 def thumbprint_from_key_identifier(value: str | None) -> str | None:

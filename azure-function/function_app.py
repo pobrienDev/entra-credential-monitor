@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import azure.functions as func
@@ -24,7 +24,6 @@ from azure.identity import DefaultAzureCredential
 from azure.storage.blob import BlobServiceClient, ContentSettings
 
 from credmon.config import Config
-from credmon.graph import get_session
 from credmon.runner import run_scan
 
 app = func.FunctionApp()
@@ -51,14 +50,14 @@ def upload_reports(out_dir: Path, now: datetime) -> list[str]:
     return written
 
 
-@app.timer_trigger(schedule="0 0 12 * * *", arg_name="timer", run_on_startup=False, use_monitor=True)
+@app.timer_trigger(schedule="0 0 12 * * *", arg_name="timer")
 def credential_scan(timer: func.TimerRequest) -> None:
     if timer.past_due:
         log.warning("Timer is past due; running now.")
     config = Config.load(os.environ.get("CREDMON_CONFIG", CONFIG_PATH))
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with tempfile.TemporaryDirectory() as tmp:
-        result = run_scan(config, now=now, out_dir=tmp, session=get_session(DefaultAzureCredential()))
+        result = run_scan(config, now, out_dir=tmp)  # DefaultAzureCredential picks up the managed identity
         written = upload_reports(Path(tmp), now)
     log.info("%s", result.headline())
     log.info("counts %s", " ".join(f"{k}={v}" for k, v in result.counts.items() if v))

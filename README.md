@@ -47,7 +47,7 @@ Thresholds are inclusive: exactly 7 days left is critical. Excluded apps (`exclu
 
 ## Setup
 
-### 1. Entra: a reader identity with one permission
+### 1. Entra: a reader identity with two read-only permissions
 
 1. Create an app registration, for example `credmon-reader`.
 2. Add the Microsoft Graph **application** permission `Application.Read.All` and grant admin consent. To show owner names rather than object IDs, also add `User.ReadBasic.All`, or set `lookup_owners: false`.
@@ -60,7 +60,7 @@ Thresholds are inclusive: exactly 7 days left is critical. Excluded apps (`exclu
 
 That's all. The workflow's built-in `GITHUB_TOKEN` handles issues because `monitor.yml` grants `issues: write`.
 
-If you manage Entra with Terraform, the reader identity is about forty lines: see [`credmon.tf` in entra-terraform](https://github.com/pobrienDev/entra-terraform/blob/main/credmon.tf), which declares the app, its service principal, the federated credential and the consent grants, and was used to import the portal-created app without changing its client ID.
+If you manage Entra with Terraform, the reader identity is about forty lines: see [the `credmon` entry of `github.tf` in entra-terraform](https://github.com/pobrienDev/entra-terraform/blob/main/github.tf), which declares the app, its service principal, the federated credential and the consent grants, and was used to import the portal-created app without changing its client ID.
 
 ### 3. Configure and run
 
@@ -114,7 +114,7 @@ The exit code is 1 when any credential is at or above `fail_on`.
 ## Tests
 
 ```bash
-pytest -q
+ruff check && pytest -q
 ```
 
 Microsoft Graph and GitHub are mocked with sanitised fixtures under `tests/fixtures/`; no tenant access is needed. The suite covers the exact threshold boundaries, expired credentials, apps with no credentials, multi-page results, 429 and connection-error retries, rotation detection, the SAML triple collapse, all three report formats, and every issue lifecycle transition.

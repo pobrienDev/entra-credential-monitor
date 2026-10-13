@@ -1,5 +1,3 @@
-import re
-
 import pytest
 import requests
 import responses

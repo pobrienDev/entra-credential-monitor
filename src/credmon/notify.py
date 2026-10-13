@@ -17,7 +17,8 @@ from __future__ import annotations
 import logging
 import os
 import re
-from dataclasses import dataclass, field
+from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime
 
 import requests
@@ -58,12 +59,9 @@ class Action:
         return f"{self.kind:<6}{num} {who}: {self.reason}".rstrip()
 
 
-@dataclass
-class SyncResult:
-    actions: list[Action] = field(default_factory=list)
-
-    def count(self, kind: str) -> int:
-        return sum(1 for a in self.actions if a.kind == kind)
+def tally(actions: list[Action]) -> str:
+    n = Counter(a.kind for a in actions)
+    return f"notify: {n['create']} opened, {n['update']} updated, {n['close']} closed, {n['noop']} unchanged"
 
 
 # --------------------------------------------------------------------------- content
@@ -75,7 +73,7 @@ def parse_markers(body: str | None) -> tuple[str | None, str | None]:
 
 
 def issue_title(c: Credential) -> str:
-    return f"{c.status.upper()}: {c.display_name} {type_label(c).lower()} \"{c.name}\" expires {c.end:%Y-%m-%d}"
+    return f'{c.status.upper()}: {c.display_name} {type_label(c).lower()} "{c.name}" expires {c.end:%Y-%m-%d}'
 
 
 def _portal_link(c: Credential) -> str:
@@ -91,7 +89,7 @@ def _portal_link(c: Credential) -> str:
 
 
 def issue_body(c: Credential, now: datetime) -> str:
-    when = "expired" if c.days is not None and c.days < 0 else f"expires in {c.days} day{'s' if c.days != 1 else ''}"
+    when = "expired" if c.days < 0 else f"expires in {c.days} day{'s' if c.days != 1 else ''}"
     if c.cred_type == SAML_CERTIFICATE:
         steps = (
             "1. Open the enterprise application's **Single sign-on** page (link below).\n"
@@ -194,10 +192,9 @@ def plan_actions(records: list[Credential], open_issues: list[OpenIssue]) -> lis
 
 
 class GitHubIssues:
-    def __init__(self, repo: str, token: str, session: requests.Session | None = None, api: str = GITHUB_API):
+    def __init__(self, repo: str, token: str):
         self.repo = repo
-        self.api = api.rstrip("/")
-        self.session = session or requests.Session()
+        self.session = requests.Session()
         self.session.headers.update(
             {
                 "Authorization": f"Bearer {token}",
@@ -207,7 +204,7 @@ class GitHubIssues:
         )
 
     def _url(self, path: str) -> str:
-        return f"{self.api}/repos/{self.repo}/{path.lstrip('/')}"
+        return f"{GITHUB_API}/repos/{self.repo}/{path}"
 
     def _request(self, method: str, path: str, **kwargs) -> requests.Response:
         resp = self.session.request(method, self._url(path), timeout=30, **kwargs)
@@ -218,7 +215,9 @@ class GitHubIssues:
     def ensure_label(self) -> None:
         resp = self.session.get(self._url(f"labels/{LABEL}"), timeout=30)
         if resp.status_code == 404:
-            self._request("POST", "labels", json={"name": LABEL, "color": LABEL_COLOR, "description": LABEL_DESCRIPTION})
+            self._request(
+                "POST", "labels", json={"name": LABEL, "color": LABEL_COLOR, "description": LABEL_DESCRIPTION}
+            )
         elif resp.status_code >= 400:
             raise RuntimeError(f"GitHub GET labels/{LABEL} failed: {resp.status_code}")
 
@@ -226,8 +225,8 @@ class GitHubIssues:
         out: list[OpenIssue] = []
         page = 1
         while True:
-            resp = self._request("GET", "issues", params={"state": "open", "labels": LABEL, "per_page": 100, "page": page})
-            items = resp.json()
+            params = {"state": "open", "labels": LABEL, "per_page": 100, "page": page}
+            items = self._request("GET", "issues", params=params).json()
             for it in items:
                 if "pull_request" in it:
                     continue
@@ -253,33 +252,32 @@ class GitHubIssues:
 # --------------------------------------------------------------------------- apply
 
 
-def apply_actions(actions: list[Action], client: GitHubIssues | None, now: datetime, dry_run: bool = False) -> SyncResult:
-    result = SyncResult(actions=actions)
+def apply_actions(actions: list[Action], client: GitHubIssues | None, now: datetime) -> None:
+    """Carry out the plan. With no client this is a dry run and nothing is touched."""
     writes = [a for a in actions if a.kind != "noop"]
-    if dry_run or client is None:
-        for a in actions:
-            log.info("dry-run %s", a.describe())
-        return result
-    if writes:
-        client.ensure_label()
+    if client is None or not writes:
+        return
+    stamp = f"as of {now:%Y-%m-%d %H:%M} UTC"
+    client.ensure_label()
     for a in writes:
         if a.kind == "create":
             number = client.create_issue(issue_title(a.record), issue_body(a.record, now))
             log.info("opened #%s for %s", number, a.record.display_name)
         elif a.kind == "update":
             client.update_issue(a.issue.number, issue_title(a.record), issue_body(a.record, now))
-            client.comment(a.issue.number, f"Severity changed: **{a.issue.status}** → **{a.record.status}** as of {now:%Y-%m-%d %H:%M} UTC.")
+            client.comment(a.issue.number, f"Severity changed: **{a.issue.status}** → **{a.record.status}** {stamp}.")
             log.info("updated #%s: %s", a.issue.number, a.reason)
         elif a.kind == "close":
-            client.comment(a.issue.number, f"Resolved: {a.reason} as of {now:%Y-%m-%d %H:%M} UTC. Closing automatically.")
+            client.comment(a.issue.number, f"Resolved: {a.reason} {stamp}. Closing automatically.")
             client.close_issue(a.issue.number)
             log.info("closed #%s: %s", a.issue.number, a.reason)
-    return result
 
 
-def sync(records: list[Credential], client: GitHubIssues | None, now: datetime, dry_run: bool = False) -> SyncResult:
-    open_issues = client.list_open_issues() if client is not None else []
-    return apply_actions(plan_actions(records, open_issues), client, now, dry_run=dry_run)
+def sync(records: list[Credential], client: GitHubIssues | None, now: datetime) -> list[Action]:
+    """Plan against the open issues and apply. Returns the plan for reporting."""
+    actions = plan_actions(records, client.list_open_issues() if client else [])
+    apply_actions(actions, client, now)
+    return actions
 
 
 def client_from_env(env: dict[str, str] | None = None) -> GitHubIssues:

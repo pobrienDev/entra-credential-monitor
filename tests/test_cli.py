@@ -3,7 +3,7 @@ import json
 import pytest
 import responses
 
-from credmon import cli
+from credmon import runner
 from credmon.cli import build_parser, main
 from credmon.graph import GRAPH
 from tests.conftest import load_fixture
@@ -34,7 +34,7 @@ def test_notify_defaults():
 @pytest.fixture
 def graph(monkeypatch, session):
     """Mock Graph with the fixtures and make the CLI use a pre-authenticated session."""
-    monkeypatch.setattr(cli, "get_session", lambda: session)
+    monkeypatch.setattr(runner, "get_session", lambda: session)
     with responses.RequestsMock(assert_all_requests_are_fired=False) as rsps:
         page1 = load_fixture("applications_page1.json")
         rsps.get(f"{GRAPH}/applications", json=page1)
@@ -62,13 +62,23 @@ def test_scan_files_writes_reports_and_fails_on_critical(tmp_path, graph, capsys
     payload = json.loads((tmp_path / "out" / "credentials.json").read_text())
     assert len(payload["credentials"]) == 5
     assert payload["generated_at"] == "2026-10-05T12:00:00+00:00"
-    assert payload["counts"] == {"expired": 0, "critical": 1, "warning": 0, "notice": 1, "cleanup": 1, "ok": 2, "hygiene": 1}
+    assert payload["counts"] == {
+        "expired": 0,
+        "critical": 1,
+        "warning": 0,
+        "notice": 1,
+        "cleanup": 1,
+        "ok": 2,
+        "hygiene": 1,
+    }
     assert (tmp_path / "out" / "summary.md").read_text().startswith("## Credential expiry report")
     assert (tmp_path / "out" / "credentials.csv").exists()
 
 
 def test_scan_exit_zero_when_fail_on_never(tmp_path, graph):
-    assert main(["scan", "--config", write_config(tmp_path, "never"), "--out", str(tmp_path / "out"), "--now", NOW]) == 0
+    assert (
+        main(["scan", "--config", write_config(tmp_path, "never"), "--out", str(tmp_path / "out"), "--now", NOW]) == 0
+    )
 
 
 def test_scan_table_prints_rows(tmp_path, graph, capsys):
@@ -103,11 +113,12 @@ def test_notify_dry_run_reads_report_and_plans(tmp_path, graph, capsys):
 
 
 def test_run_scan_returns_records_and_paths(tmp_path, graph, session):
-    from credmon.runner import run_scan
     from credmon.collect import parse_graph_datetime
     from credmon.config import Config
+    from credmon.runner import run_scan
 
-    result = run_scan(Config(tenant_id="6c3eca84-802c-4606-869d-c1b7c87d8320"), now=parse_graph_datetime(NOW), out_dir=tmp_path, session=session)
+    config = Config(tenant_id="6c3eca84-802c-4606-869d-c1b7c87d8320")
+    result = run_scan(config, parse_graph_datetime(NOW), out_dir=tmp_path, session=session)
 
     assert len(result.records) == 5
     assert result.failed is True

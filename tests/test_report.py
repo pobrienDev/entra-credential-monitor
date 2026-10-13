@@ -1,13 +1,13 @@
 import csv
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from credmon.classify import classify
 from credmon.collect import CERTIFICATE, SAML_CERTIFICATE, SECRET, CollectResult, Credential, Owner
 from credmon.config import Config
 from credmon.report import load_json, render_summary, write_reports
 
-NOW = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 5, 12, 0, tzinfo=UTC)
 
 
 def cred(name, days, obj=None, cred_type=SECRET, lifetime_days=None, excluded=False, display=None, owners=()):
@@ -50,9 +50,11 @@ def test_summary_markdown_structure_and_order():
 
     assert md.startswith("## Credential expiry report · 2026-10-05 12:00 UTC\n")
     assert "Scanned 14 applications and 3 SAML service principals · 8 credentials" in md
-    assert "**expired** 1 · **critical** 2 · **warning** 1 · **notice** 1 · **cleanup** 1 · **ok** 2 · **hygiene** 1" in md
+    assert (
+        "**expired** 1 · **critical** 2 · **warning** 1 · **notice** 1 · **cleanup** 1 · **ok** 2 · **hygiene** 1" in md
+    )
 
-    rows = [l for l in md.splitlines() if l.startswith("| ") and not l.startswith("| Status")]
+    rows = [line for line in md.splitlines() if line.startswith("| ") and not line.startswith("| Status")]
     statuses = [r.split("|")[1].strip() for r in rows]
     assert statuses == ["EXPIRED", "CRITICAL*", "CRITICAL", "WARNING", "NOTICE", "CLEANUP", "HYGIENE", "OK"]
     # Healthy rows are folded away; HYGIENE is not healthy.
@@ -88,13 +90,33 @@ def test_write_reports_creates_three_consistent_files(tmp_path):
     assert [r["status"] for r in rows] == [c.status for c in records]
     assert rows[0]["display_name"] == "zombie" and rows[0]["days"] == "-3"
     assert set(rows[0]) == {
-        "status", "days", "object_type", "object_id", "app_id", "display_name", "cred_type",
-        "key_id", "name", "start", "end", "thumbprint", "owners", "long_lived", "excluded", "unowned",
+        "status",
+        "days",
+        "object_type",
+        "object_id",
+        "app_id",
+        "display_name",
+        "cred_type",
+        "key_id",
+        "name",
+        "start",
+        "end",
+        "thumbprint",
+        "owners",
+        "long_lived",
+        "excluded",
+        "unowned",
     }
 
     payload = json.loads(paths.json.read_text())
     assert payload["generated_at"] == "2026-10-05T12:00:00+00:00"
-    assert payload["scanned"] == {"applications": 14, "saml_service_principals": 3, "first_party_skipped": 0, "owners_looked_up": False, "unowned_objects": 0}
+    assert payload["scanned"] == {
+        "applications": 14,
+        "saml_service_principals": 3,
+        "first_party_skipped": 0,
+        "owners_looked_up": False,
+        "unowned_objects": 0,
+    }
     assert payload["counts"]["critical"] == 2
     assert [c["name"] for c in payload["credentials"]] == [c.name for c in records]
     assert payload["credentials"][0]["end"] == "2026-10-02T12:00:00+00:00"
@@ -108,11 +130,11 @@ def test_write_reports_creates_three_consistent_files(tmp_path):
 def test_owner_column_appears_only_when_looked_up():
     owner = Owner(id="1", display_name="Pat Example", user_principal_name="pat@example.test")
     records = classify([cred("a", 2, owners=[owner]), cred("b", 3)], Config(), NOW)
-    records[1].unowned = True  # collect() sets this when owners were looked up and none exist
 
     without = render_summary(records, CollectResult(credentials=records, owners_looked_up=False), NOW)
-    assert "Owners" not in without and "unowned" not in without.lower()
+    assert "Owners" not in without and "no owners" not in without
 
+    records[1].unowned = True  # collect() sets this when owners were looked up and none exist
     with_owners = render_summary(records, CollectResult(credentials=records, owners_looked_up=True), NOW)
     assert "| Status | App | Type | Name | Expires | Days | Owners |" in with_owners
     assert "| 2 | Pat Example |" in with_owners
@@ -137,7 +159,10 @@ def test_unowned_finding_section_and_json(tmp_path):
     stats = CollectResult(credentials=records, owners_looked_up=True)
 
     findings = stats.unowned_findings()
-    assert [(f.display_name, f.credential_count, f.excluded) for f in findings] == [("payroll", 2, False), ("legacy", 1, True)]
+    assert [(f.display_name, f.credential_count, f.excluded) for f in findings] == [
+        ("payroll", 2, False),
+        ("legacy", 1, True),
+    ]
     assert findings[0].soonest_end == NOW + timedelta(days=5)
 
     md = render_summary(records, stats, NOW)
@@ -178,9 +203,8 @@ def test_json_round_trip(tmp_path):
     records, stats = sample()
     paths = write_reports(records, stats, NOW, tmp_path)
 
-    loaded, meta = load_json(paths.json)
+    loaded = load_json(paths.json)
 
     assert [c.to_dict() for c in loaded] == [c.to_dict() for c in records]
     assert loaded[0].end.tzinfo is not None
-    assert meta["scanned"]["applications"] == 14
     assert {c.uid for c in loaded} == {c.uid for c in records}
